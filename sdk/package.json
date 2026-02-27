@@ -1,0 +1,40 @@
+{
+  "name": "@agentmonitor/sdk",
+  "version": "0.1.0",
+  "description": "AgentMonitor SDK - AI Agent 质量监控与调试",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "vitest",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "monitoring",
+    "debugging",
+    "langchain",
+    "openai"
+  ],
+  "author": "AgentMonitor Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^2.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "demo": "tsx test-demo.ts",
+    "test": "vitest"
+  },
+  "dependencies": {}
+}
