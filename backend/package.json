@@ -6,21 +6,29 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "dev:simple": "tsx watch src/simple-server.ts",
-    "dev:mvp": "tsx watch src/mvp-server.ts",
-    "dev:mvp:js": "node --watch mvp-server.js",
     "build": "tsc",
     "start": "node dist/index.js",
-    "start:simple": "tsx src/simple-server.ts",
-    "start:mvp": "tsx src/mvp-server.ts",
-    "start:mvp:js": "node mvp-server.js",
-    "test": "vitest",
-    "lint": "eslint ."
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:api": "vitest run tests/",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "migrate": "tsx src/db/migrate.ts"
   },
   "author": "AgentMonitor Team",
   "license": "UNLICENSED",
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.10.1",
+    "@types/pg": "^8.18.0",
+    "@types/supertest": "^7.2.0",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.18.1",
+    "dotenv": "^17.3.1",
+    "supertest": "^7.2.2",
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vitest": "^2.0.0"
@@ -28,8 +36,13 @@
   "dependencies": {
     "@fastify/cors": "^10.0.0",
     "@fastify/websocket": "^11.0.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.6.2",
+    "crypto-js": "^4.2.0",
     "fastify": "^5.0.0",
-    "ioredis": "^5.4.0",
-    "pg": "^8.13.0"
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.13.0",
+    "uuid": "^13.0.0",
+    "ws": "^8.19.0"
   }
 }

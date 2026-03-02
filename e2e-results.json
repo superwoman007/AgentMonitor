@@ -1,0 +1,307 @@
+{
+  "config": {
+    "configFile": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/playwright.config.e2e.ts",
+    "rootDir": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/root/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "e2e-chromium",
+        "name": "e2e-chromium",
+        "testDir": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "e2e-report"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "e2e-results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "user-journey.spec.ts",
+      "file": "user-journey.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "完整用户旅程",
+          "file": "user-journey.spec.ts",
+          "line": 7,
+          "column": 6,
+          "specs": [
+            {
+              "title": "端到端：注册 → 创建项目 → 生成 Key → SDK 采集 → 查看数据",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 60068,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, open '/root/test-results/.playwright-artifacts-0/traces/71a1cccb6623f87e1233-19b084b72916625ae4f6.trace'"
+                        },
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "column": 16,
+                            "line": 17
+                          },
+                          "message": "Error: page.fill: Test ended.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"名字\"]')\u001b[22m\n\n\n\u001b[0m \u001b[90m 15 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[type=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m testEmail)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[type=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m testPassword)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 17 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"名字\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'E2E Test User'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 18 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"注册\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 19 |\u001b[39m     \n \u001b[90m 20 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[32m`${BASE_URL}/dashboard`\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:17:16\u001b[22m"
+                        },
+                        {
+                          "message": "Error: ENOENT: no such file or directory, open '/root/test-results/.playwright-artifacts-0/1ae5c8417a992df3ae996fe1317c5c90.zip'"
+                        },
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-01T23:29:36.592Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：注册-→-创建项目-→-生成-Key-→-SDK-采集-→-查看数据-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：注册-→-创建项目-→-生成-Key-→-SDK-采集-→-查看数据-e2e-chromium/error-context.md"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "71a1cccb6623f87e1233-19b084b72916625ae4f6",
+              "file": "user-journey.spec.ts",
+              "line": 12,
+              "column": 7
+            },
+            {
+              "title": "端到端：断点调试流程",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 64201,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "column": 16,
+                            "line": 123
+                          },
+                          "message": "Error: page.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"添加断点\")')\u001b[22m\n\n\n\u001b[0m \u001b[90m 121 |\u001b[39m     \n \u001b[90m 122 |\u001b[39m     \u001b[90m// 创建断点\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 123 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"添加断点\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 124 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"变量名\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'user_input'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 125 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"条件\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'length > 10'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 126 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"保存\")'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:123:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-01T23:31:38.433Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "71a1cccb6623f87e1233-a77f00ac0fa032a0ca3e",
+              "file": "user-journey.spec.ts",
+              "line": 112,
+              "column": 7
+            },
+            {
+              "title": "端到端：告警流程",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "timedOut",
+                      "duration": 64080,
+                      "error": {
+                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
+                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                      },
+                      "errors": [
+                        {
+                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        },
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "column": 16,
+                            "line": 166
+                          },
+                          "message": "Error: page.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"创建告警\")')\u001b[22m\n\n\n\u001b[0m \u001b[90m 164 |\u001b[39m     \n \u001b[90m 165 |\u001b[39m     \u001b[90m// 创建告警规则\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 166 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"创建告警\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 167 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"告警名称\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'High Latency Alert'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 168 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mselectOption(\u001b[32m'select[name=\"metric\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'latency'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 169 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mselectOption(\u001b[32m'select[name=\"operator\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'>'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:166:16\u001b[22m"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-01T23:32:44.168Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "71a1cccb6623f87e1233-50388faa50d4ce995651",
+              "file": "user-journey.spec.ts",
+              "line": 155,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-01T23:29:35.284Z",
+    "duration": 253245.872,
+    "expected": 0,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

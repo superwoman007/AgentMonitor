@@ -1,15 +1,12 @@
 
 -- AgentMonitor 数据库 Schema
--- PostgreSQL + TimescaleDB
-
--- 启用 TimescaleDB 扩展
-CREATE EXTENSION IF NOT EXISTS timescaledb;
+-- PostgreSQL (TimescaleDB optional)
 
 -- ============================================
 -- 用户与认证表
 -- ============================================
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) UNIQUE NOT NULL,
   name VARCHAR(255),
@@ -18,7 +15,7 @@ CREATE TABLE users (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
@@ -27,7 +24,7 @@ CREATE TABLE projects (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE api_keys (
+CREATE TABLE IF NOT EXISTS api_keys (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
@@ -42,7 +39,7 @@ CREATE TABLE api_keys (
 -- 会话与消息表
 -- ============================================
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY,
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   agent_id VARCHAR(255),
@@ -53,10 +50,10 @@ CREATE TABLE sessions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_sessions_project_id ON sessions(project_id);
-CREATE INDEX idx_sessions_started_at ON sessions(started_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
   role VARCHAR(20) NOT NULL,
@@ -66,10 +63,10 @@ CREATE TABLE messages (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_messages_session_id ON messages(session_id);
-CREATE INDEX idx_messages_timestamp ON messages(timestamp);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
 
-CREATE TABLE tool_calls (
+CREATE TABLE IF NOT EXISTS tool_calls (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
   message_id UUID REFERENCES messages(id) ON DELETE CASCADE,
@@ -83,14 +80,41 @@ CREATE TABLE tool_calls (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tool_calls_session_id ON tool_calls(session_id);
-CREATE INDEX idx_tool_calls_started_at ON tool_calls(started_at);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_started_at ON tool_calls(started_at);
 
 -- ============================================
--- 监控指标表（TimescaleDB 超表）
+-- 调用追踪表
 -- ============================================
 
-CREATE TABLE metrics (
+CREATE TABLE IF NOT EXISTS traces (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
+  agent_id VARCHAR(255),
+  trace_type VARCHAR(50) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  input JSONB,
+  output JSONB,
+  metadata JSONB,
+  started_at TIMESTAMPTZ NOT NULL,
+  ended_at TIMESTAMPTZ,
+  latency_ms INTEGER,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  error TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_project_id ON traces(project_id);
+CREATE INDEX IF NOT EXISTS idx_traces_session_id ON traces(session_id);
+CREATE INDEX IF NOT EXISTS idx_traces_started_at ON traces(started_at);
+CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+
+-- ============================================
+-- 监控指标表
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS metrics (
   timestamp TIMESTAMPTZ NOT NULL,
   project_id UUID NOT NULL,
   agent_id VARCHAR(255),
@@ -99,16 +123,14 @@ CREATE TABLE metrics (
   tags JSONB
 );
 
-SELECT create_hypertable('metrics', 'timestamp');
-
-CREATE INDEX idx_metrics_project_id ON metrics(project_id, timestamp DESC);
-CREATE INDEX idx_metrics_metric_name ON metrics(metric_name, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_project_id ON metrics(project_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_metrics_metric_name ON metrics(metric_name, timestamp DESC);
 
 -- ============================================
 -- 断点与快照表
 -- ============================================
 
-CREATE TABLE breakpoints (
+CREATE TABLE IF NOT EXISTS breakpoints (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
@@ -119,7 +141,7 @@ CREATE TABLE breakpoints (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE snapshots (
+CREATE TABLE IF NOT EXISTS snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID REFERENCES sessions(id) ON DELETE CASCADE,
   breakpoint_id UUID REFERENCES breakpoints(id),
@@ -129,5 +151,37 @@ CREATE TABLE snapshots (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_snapshots_session_id ON snapshots(session_id);
-CREATE INDEX idx_snapshots_timestamp ON snapshots(timestamp);
+CREATE INDEX IF NOT EXISTS idx_snapshots_session_id ON snapshots(session_id);
+CREATE INDEX IF NOT EXISTS idx_snapshots_timestamp ON snapshots(timestamp);
+
+-- ============================================
+-- 告警规则表
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  type VARCHAR(20) NOT NULL,
+  condition TEXT NOT NULL,
+  threshold DOUBLE PRECISION NOT NULL,
+  enabled BOOLEAN DEFAULT true,
+  last_triggered_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alerts_project_id ON alerts(project_id);
+
+CREATE TABLE IF NOT EXISTS alert_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  alert_id UUID REFERENCES alerts(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  triggered_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_history_alert_id ON alert_history(alert_id);
+CREATE INDEX IF NOT EXISTS idx_alert_history_project_id ON alert_history(project_id);
+CREATE INDEX IF NOT EXISTS idx_alert_history_triggered_at ON alert_history(triggered_at);
