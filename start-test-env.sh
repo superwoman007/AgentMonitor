@@ -64,7 +64,7 @@ start_backend() {
 start_frontend() {
     echo -e "${YELLOW}Starting frontend on port 5174...${NC}"
     cd frontend
-    nohup npm run dev -- --host > ../logs/frontend.log 2>&1 &
+    nohup npm run dev -- --host --port 5174 > ../logs/frontend.log 2>&1 &
     FRONTEND_PID=$!
     echo "Frontend PID: $FRONTEND_PID"
     cd ..

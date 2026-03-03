@@ -1,0 +1,16 @@
+[Unit]
+Description=AgentMonitor Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace-am-dev/projects/agent-monitor/backend
+ExecStart=/usr/bin/npm run dev
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/.openclaw/workspace-am-dev/projects/agent-monitor/logs/backend.log
+StandardError=append:/root/.openclaw/workspace-am-dev/projects/agent-monitor/logs/backend.log
+
+[Install]
+WantedBy=multi-user.target

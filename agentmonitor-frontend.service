@@ -1,0 +1,16 @@
+[Unit]
+Description=AgentMonitor Frontend Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace-am-dev/projects/agent-monitor/frontend
+ExecStart=/usr/bin/npm run dev -- --host --port 5174
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/.openclaw/workspace-am-dev/projects/agent-monitor/logs/frontend.log
+StandardError=append:/root/.openclaw/workspace-am-dev/projects/agent-monitor/logs/frontend.log
+
+[Install]
+WantedBy=multi-user.target
