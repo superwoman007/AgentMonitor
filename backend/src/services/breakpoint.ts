@@ -42,7 +42,7 @@ export async function createBreakpoint(data: BreakpointCreateData): Promise<Brea
     `INSERT INTO breakpoints (id, project_id, name, type, condition, enabled)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [id, data.projectId, data.name, data.type, data.condition, data.enabled ?? true]
+    [id, data.projectId, data.name, data.type, data.condition, data.enabled !== false ? 1 : 0]
   );
   
   if (!breakpoint) {

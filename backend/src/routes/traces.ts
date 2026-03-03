@@ -1,5 +1,8 @@
 import { FastifyInstance } from 'fastify';
 import { createTrace, getTracesByProject, getTraceById, updateTrace } from '../services/trace.js';
+import { checkBreakpoints } from '../services/breakpoint.js';
+import { createSnapshot } from '../services/snapshot.js';
+import { getMessagesBySession } from '../services/session.js';
 import { apikeyMiddleware } from '../middleware/apikey.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getProjectById } from '../services/project.js';
@@ -48,6 +51,68 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     });
     
     app.log.info({ traceId: trace.id, projectId: request.projectId }, 'Trace created');
+    
+    try {
+      const triggeredBreakpoints = await checkBreakpoints(request.projectId, {
+        content: body.output ? JSON.stringify(body.output) : undefined,
+        error: body.error,
+        latencyMs: body.latencyMs,
+        toolName: body.name,
+        metadata: body.metadata as Record<string, unknown> | undefined,
+      });
+      
+      if (triggeredBreakpoints.length > 0 && body.sessionId) {
+        app.log.info(
+          { traceId: trace.id, triggeredCount: triggeredBreakpoints.length },
+          'Breakpoints triggered'
+        );
+        
+        const messages = await getMessagesBySession(body.sessionId);
+        
+        for (const breakpoint of triggeredBreakpoints) {
+          await createSnapshot({
+            sessionId: body.sessionId,
+            breakpointId: breakpoint.id,
+            triggerReason: `Breakpoint "${breakpoint.name}" triggered: ${breakpoint.type} - ${breakpoint.condition}`,
+            state: {
+              trace: {
+                id: trace.id,
+                name: trace.name,
+                type: trace.trace_type,
+                input: trace.input,
+                output: trace.output,
+                status: trace.status,
+                error: trace.error,
+                latencyMs: trace.latency_ms,
+              },
+              messages: messages.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: m.timestamp ? (m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp) : null,
+              })),
+              breakpoint: {
+                id: breakpoint.id,
+                name: breakpoint.name,
+                type: breakpoint.type,
+                condition: breakpoint.condition,
+              },
+              metadata: body.metadata,
+            },
+          });
+          
+          app.log.info(
+            { 
+              traceId: trace.id, 
+              breakpointId: breakpoint.id,
+              sessionId: body.sessionId 
+            },
+            'Snapshot created for triggered breakpoint'
+          );
+        }
+      }
+    } catch (error) {
+      app.log.error({ error, traceId: trace.id }, 'Failed to check breakpoints or create snapshot');
+    }
     
     reply.code(201).send({ trace });
   });

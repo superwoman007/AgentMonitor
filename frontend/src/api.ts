@@ -140,10 +140,10 @@ class ApiClient {
       if (params?.status) query.set('status', params.status);
       if (params?.limit) query.set('limit', String(params.limit));
       if (params?.offset) query.set('offset', String(params.offset));
-      return this.request<{ sessions: Session[] }>(`/sessions?${query.toString()}`);
+      return this.request<{ sessions: Session[] }>(`/sessions/list?${query.toString()}`);
     },
 
-    get: (id: string) => this.request<{ session: Session }>(`/sessions/${id}`),
+    get: (id: string) => this.request<{ session: Session }>(`/sessions/detail/${id}`),
 
     create: (projectId: string, data?: { id?: string; agentId?: string; metadata?: unknown }) =>
       this.request<{ session: Session }>('/sessions', {
@@ -152,7 +152,7 @@ class ApiClient {
       }),
 
     end: (id: string) =>
-      this.request<{ session: Session }>(`/sessions/${id}/end`, { method: 'PUT' }),
+      this.request<{ session: Session }>(`/sessions/end/${id}`, { method: 'PUT' }),
 
     messages: {
       list: (sessionId: string, params?: { limit?: number; offset?: number }) => {
@@ -160,7 +160,7 @@ class ApiClient {
         if (params?.limit) query.set('limit', String(params.limit));
         if (params?.offset) query.set('offset', String(params.offset));
         const qs = query.toString();
-        return this.request<{ messages: Message[] }>(`/sessions/${sessionId}/messages${qs ? `?${qs}` : ''}`);
+        return this.request<{ messages: Message[] }>(`/sessions/messages/${sessionId}${qs ? `?${qs}` : ''}`);
       },
 
       add: (sessionId: string, data: { role: string; content: string; metadata?: unknown }) =>

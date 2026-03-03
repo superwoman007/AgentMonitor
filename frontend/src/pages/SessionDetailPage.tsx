@@ -12,6 +12,8 @@ export function SessionDetailPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [traces, setTraces] = useState<Trace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'timeline' | 'chat'>('timeline');
 
   useEffect(() => {
     if (!id) return;
@@ -54,6 +56,38 @@ export function SessionDetailPage() {
     } catch (error) {
       console.error('Failed to end session:', error);
     }
+  };
+
+  const toggleMessage = (msgId: string) => {
+    setExpandedMessages(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  };
+
+  const getMessageMetadata = (msg: Message) => {
+    const meta = msg.metadata as any;
+    return {
+      tokens: meta?.tokens || meta?.usage?.total_tokens,
+      latency: meta?.latency || meta?.latency_ms,
+      model: meta?.model,
+    };
+  };
+
+  const formatTokens = (tokens?: number) => {
+    if (!tokens) return null;
+    return `${tokens} tokens`;
+  };
+
+  const formatLatency = (latency?: number) => {
+    if (!latency) return null;
+    if (latency < 1000) return `${latency}ms`;
+    return `${(latency / 1000).toFixed(2)}s`;
   };
 
   if (isLoading) {
@@ -148,39 +182,138 @@ export function SessionDetailPage() {
 
         <div className="lg:col-span-3">
           <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <h3 className="text-sm font-medium text-gray-900 mb-4">{t.messages} ({messages.length})</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-sm font-medium text-gray-900">{t.messages} ({messages.length})</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewMode('timeline')}
+                  className={`px-3 py-1 text-xs rounded ${
+                    viewMode === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  Timeline
+                </button>
+                <button
+                  onClick={() => setViewMode('chat')}
+                  className={`px-3 py-1 text-xs rounded ${
+                    viewMode === 'chat' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  Chat
+                </button>
+              </div>
+            </div>
             {messages.length === 0 ? (
               <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
+            ) : viewMode === 'timeline' ? (
+              <div className="relative">
+                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                <div className="space-y-4">
+                  {messages.map((msg, idx) => {
+                    const metadata = getMessageMetadata(msg);
+                    const isExpanded = expandedMessages.has(msg.id);
+                    return (
+                      <div key={msg.id} className="relative pl-10">
+                        <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${
+                          msg.role === 'user' ? 'bg-blue-500' : 
+                          msg.role === 'assistant' ? 'bg-green-500' : 'bg-yellow-500'
+                        }`}>
+                          <span className="text-white text-xs">{idx + 1}</span>
+                        </div>
+                        <div className="bg-white border rounded-lg p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                msg.role === 'user'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : msg.role === 'assistant'
+                                  ? 'bg-green-100 text-green-700'
+                                  : 'bg-yellow-100 text-yellow-700'
+                              }`}>
+                                {msg.role}
+                              </span>
+                              <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
+                              {metadata.model && (
+                                <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-gray-500">
+                              {formatTokens(metadata.tokens) && (
+                                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                                  {formatTokens(metadata.tokens)}
+                                </span>
+                              )}
+                              {formatLatency(metadata.latency) && (
+                                <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">
+                                  {formatLatency(metadata.latency)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div 
+                            className={`text-sm whitespace-pre-wrap ${!isExpanded && msg.content.length > 200 ? 'max-h-32 overflow-hidden relative' : ''}`}
+                          >
+                            {msg.content}
+                            {!isExpanded && msg.content.length > 200 && (
+                              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent"></div>
+                            )}
+                          </div>
+                          {msg.content.length > 200 && (
+                            <button
+                              onClick={() => toggleMessage(msg.id)}
+                              className="text-blue-600 text-xs mt-2 hover:underline"
+                            >
+                              {isExpanded ? 'Show less' : 'Show more'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             ) : (
               <div className="space-y-4">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`p-4 rounded-lg ${
-                      msg.role === 'user'
-                        ? 'bg-blue-50 ml-0 mr-12'
-                        : msg.role === 'assistant'
-                        ? 'bg-gray-50 ml-12 mr-0'
-                        : 'bg-yellow-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          msg.role === 'user'
-                            ? 'bg-blue-100 text-blue-700'
-                            : msg.role === 'assistant'
-                            ? 'bg-gray-200 text-gray-700'
-                            : 'bg-yellow-100 text-yellow-700'
-                        }`}
-                      >
-                        {msg.role}
-                      </span>
-                      <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
+                {messages.map((msg) => {
+                  const metadata = getMessageMetadata(msg);
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`p-4 rounded-lg ${
+                        msg.role === 'user'
+                          ? 'bg-blue-50 ml-0 mr-12'
+                          : msg.role === 'assistant'
+                          ? 'bg-gray-50 ml-12 mr-0'
+                          : 'bg-yellow-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            msg.role === 'user'
+                              ? 'bg-blue-100 text-blue-700'
+                              : msg.role === 'assistant'
+                              ? 'bg-gray-200 text-gray-700'
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}
+                        >
+                          {msg.role}
+                        </span>
+                        <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
+                        {metadata.model && (
+                          <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
+                        )}
+                        {metadata.tokens && (
+                          <span className="text-xs text-purple-600">{formatTokens(metadata.tokens)}</span>
+                        )}
+                        {metadata.latency && (
+                          <span className="text-xs text-orange-600">{formatLatency(metadata.latency)}</span>
+                        )}
+                      </div>
+                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
                     </div>
-                    <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

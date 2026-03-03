@@ -8,6 +8,8 @@ import {
   getMessagesBySession,
 } from '../services/session.js';
 import { apikeyMiddleware } from '../middleware/apikey.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { getProjectById } from '../services/project.js';
 
 export async function sessionsRoutes(app: FastifyInstance): Promise<void> {
   // POST /sessions - 创建会话
@@ -103,5 +105,124 @@ export async function sessionsRoutes(app: FastifyInstance): Promise<void> {
       session_id: session.id,
       messages,
     });
+  });
+  
+  // User-authenticated routes
+  
+  // GET /sessions - 获取会话列表（用户认证）
+  app.get('/list', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+    
+    const query = request.query as {
+      projectId?: string;
+      status?: string;
+      limit?: string;
+      offset?: string;
+    };
+    
+    if (!query.projectId) {
+      reply.code(400).send({ error: 'projectId is required' });
+      return;
+    }
+    
+    const project = await getProjectById(query.projectId);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Project not found' });
+      return;
+    }
+    
+    const sessions = await getSessionsByProject(query.projectId, {
+      limit: query.limit ? parseInt(query.limit, 10) : 50,
+      offset: query.offset ? parseInt(query.offset, 10) : 0,
+      status: query.status,
+    });
+    
+    reply.send({ sessions });
+  });
+  
+  // GET /sessions/:id - 获取会话详情（用户认证）
+  app.get('/detail/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+    
+    const params = request.params as { id: string };
+    const session = await getSessionById(params.id);
+    
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const project = await getProjectById(session.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    reply.send({ session });
+  });
+  
+  // PUT /sessions/:id/end - 结束会话（用户认证）
+  app.put('/end/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+    
+    const params = request.params as { id: string };
+    const session = await getSessionById(params.id);
+    
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const project = await getProjectById(session.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const updated = await endSession(params.id);
+    reply.send({ session: updated });
+  });
+  
+  // GET /sessions/:id/messages - 获取会话消息（用户认证）
+  app.get('/messages/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+    
+    const params = request.params as { id: string };
+    const query = request.query as {
+      limit?: string;
+      offset?: string;
+    };
+    
+    const session = await getSessionById(params.id);
+    
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const project = await getProjectById(session.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const messages = await getMessagesBySession(params.id, {
+      limit: query.limit ? parseInt(query.limit, 10) : 100,
+      offset: query.offset ? parseInt(query.offset, 10) : 0,
+    });
+    
+    reply.send({ messages });
   });
 }

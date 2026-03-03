@@ -53,7 +53,7 @@ export async function createSnapshot(data: SnapshotCreateData): Promise<Snapshot
       data.breakpointId || null,
       data.triggerReason,
       JSON.stringify(data.state),
-      data.timestamp || new Date(),
+      data.timestamp ? (data.timestamp instanceof Date ? data.timestamp.toISOString() : data.timestamp) : new Date().toISOString(),
     ]
   );
   
@@ -98,4 +98,16 @@ export async function getSnapshotCount(sessionId: string): Promise<number> {
   );
   
   return result ? parseInt(result.count, 10) : 0;
+}
+
+export async function getSnapshotsByProject(projectId: string): Promise<Snapshot[]> {
+  const result = await query<Snapshot>(
+    `SELECT s.* FROM snapshots s
+     JOIN sessions sess ON s.session_id = sess.id
+     WHERE sess.project_id = $1
+     ORDER BY s.timestamp DESC`,
+    [projectId]
+  );
+  
+  return result;
 }

@@ -4,6 +4,7 @@ import {
   getSnapshotsBySession,
   getSnapshotsByBreakpoint,
   getSnapshotCount,
+  getSnapshotsByProject,
 } from '../services/snapshot.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getProjectById } from '../services/project.js';
@@ -19,16 +20,25 @@ export async function snapshotsRoutes(app: FastifyInstance): Promise<void> {
     const query = request.query as {
       sessionId?: string;
       breakpointId?: string;
+      projectId?: string;
     };
     
-    if (!query.sessionId && !query.breakpointId) {
-      reply.code(400).send({ error: 'sessionId or breakpointId is required' });
+    if (!query.sessionId && !query.breakpointId && !query.projectId) {
+      reply.code(400).send({ error: 'sessionId, breakpointId, or projectId is required' });
       return;
     }
     
     let snapshots;
     
-    if (query.sessionId) {
+    if (query.projectId) {
+      const project = await getProjectById(query.projectId);
+      if (!project || project.user_id !== request.userId) {
+        reply.code(404).send({ error: 'Project not found' });
+        return;
+      }
+      
+      snapshots = await getSnapshotsByProject(query.projectId);
+    } else if (query.sessionId) {
       const session = await getSessionById(query.sessionId);
       if (!session) {
         reply.code(404).send({ error: 'Session not found' });
