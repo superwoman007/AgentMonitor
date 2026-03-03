@@ -7,20 +7,69 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
   const testEmail = `e2e-${Date.now()}@example.com`;
   const testPassword = 'Test123456!';
   let apiKey: string;
+  let projectId: string;
+
+  // 在所有测试前创建用户和项目
+  test.beforeAll(async ({ request }) => {
+    // 注册用户
+    const registerRes = await request.post(`${API_URL}/api/v1/auth/register`, {
+      data: {
+        email: testEmail,
+        password: testPassword,
+        name: 'E2E Test User'
+      }
+    });
+    expect(registerRes.ok()).toBeTruthy();
+    
+    const { token } = await registerRes.json();
+    
+    // 创建项目
+    const projectRes = await request.post(`${API_URL}/api/v1/projects`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      data: {
+        name: 'E2E Test Project',
+        description: 'Test project for E2E tests'
+      }
+    });
+    expect(projectRes.ok()).toBeTruthy();
+    
+    const project = await projectRes.json();
+    projectId = project.id;
+    
+    // 生成 API Key
+    const keyRes = await request.post(`${API_URL}/api/v1/projects/${projectId}/keys`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      data: {
+        name: 'E2E Test Key'
+      }
+    });
+    expect(keyRes.ok()).toBeTruthy();
+    
+    const keyData = await keyRes.json();
+    apiKey = keyData.key;
+  });
 
   test('端到端：注册 → 创建项目 → 生成 Key → SDK 采集 → 查看数据', async ({ page }) => {
     // 1. 注册新用户
     await page.goto(`${BASE_URL}/register`);
     
-    // 修复：使用正确的选择器
+    // 修复：使用正确的选择器，按顺序填写
     await page.fill('input[placeholder="John Doe"]', 'E2E Test User'); // 姓名输入框
     await page.fill('input[placeholder="user@example.com"]', testEmail); // 邮箱输入框
-    await page.fill('input[type="password"]', testPassword); // 密码输入框
-    await page.fill('input[type="password"]', testPassword); // 确认密码输入框
+    
+    // 使用 nth 选择器区分两个密码输入框
+    const passwordInputs = page.locator('input[type="password"]');
+    await passwordInputs.nth(0).fill(testPassword); // 第一个密码输入框
+    await passwordInputs.nth(1).fill(testPassword); // 确认密码输入框
     
     await page.click('button:has-text("注册")');
     
-    await expect(page).toHaveURL(`${BASE_URL}/dashboard`);
+    // 等待跳转到 dashboard，增加超时时间
+    await expect(page).toHaveURL(`${BASE_URL}/dashboard`, { timeout: 10000 });
     
     // 2. 创建项目
     await page.goto(`${BASE_URL}/settings`);
