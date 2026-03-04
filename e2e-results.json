@@ -66,20 +66,20 @@
   },
   "suites": [
     {
-      "title": "user-journey.spec.ts",
-      "file": "user-journey.spec.ts",
+      "title": "p1-features.spec.ts",
+      "file": "p1-features.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "完整用户旅程",
-          "file": "user-journey.spec.ts",
-          "line": 7,
+          "title": "P1 功能深度测试",
+          "file": "p1-features.spec.ts",
+          "line": 6,
           "column": 6,
           "specs": [
             {
-              "title": "端到端：注册 → 创建项目 → 生成 Key → SDK 采集 → 查看数据",
+              "title": "P1-1: 会话回放 - 时间轴视图切换",
               "ok": false,
               "tags": [],
               "tests": [
@@ -93,63 +93,67 @@
                     {
                       "workerIndex": 0,
                       "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 60068,
+                      "status": "failed",
+                      "duration": 2022,
                       "error": {
-                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:31:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
                       },
                       "errors": [
                         {
-                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
-                        },
-                        {
-                          "message": "Error: apiRequestContext._wrapApiCall: ENOENT: no such file or directory, open '/root/test-results/.playwright-artifacts-0/traces/71a1cccb6623f87e1233-19b084b72916625ae4f6.trace'"
-                        },
-                        {
                           "location": {
-                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
                             "column": 16,
-                            "line": 17
+                            "line": 14
                           },
-                          "message": "Error: page.fill: Test ended.\nCall log:\n\u001b[2m  - waiting for locator('input[placeholder*=\"名字\"]')\u001b[22m\n\n\n\u001b[0m \u001b[90m 15 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[type=\"email\"]'\u001b[39m\u001b[33m,\u001b[39m testEmail)\u001b[33m;\u001b[39m\n \u001b[90m 16 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[type=\"password\"]'\u001b[39m\u001b[33m,\u001b[39m testPassword)\u001b[33m;\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 17 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"名字\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'E2E Test User'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m    |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 18 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"注册\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 19 |\u001b[39m     \n \u001b[90m 20 |\u001b[39m     \u001b[36mawait\u001b[39m expect(page)\u001b[33m.\u001b[39mtoHaveURL(\u001b[32m`${BASE_URL}/dashboard`\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:17:16\u001b[22m"
-                        },
-                        {
-                          "message": "Error: ENOENT: no such file or directory, open '/root/test-results/.playwright-artifacts-0/1ae5c8417a992df3ae996fe1317c5c90.zip'"
-                        },
-                        {
-                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:31:11"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-01T23:29:36.592Z",
+                      "startTime": "2026-03-04T00:55:07.241Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：注册-→-创建项目-→-生成-Key-→-SDK-采集-→-查看数据-e2e-chromium/test-failed-1.png"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-1-会话回放---时间轴视图切换-e2e-chromium/test-failed-1.png"
                         },
                         {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：注册-→-创建项目-→-生成-Key-→-SDK-采集-→-查看数据-e2e-chromium/error-context.md"
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-1-会话回放---时间轴视图切换-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-1-会话回放---时间轴视图切换-e2e-chromium/trace.zip"
                         }
-                      ]
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
                     }
                   ],
                   "status": "unexpected"
                 }
               ],
-              "id": "71a1cccb6623f87e1233-19b084b72916625ae4f6",
-              "file": "user-journey.spec.ts",
-              "line": 12,
+              "id": "72c8f5a19cd78fd15098-b5ba7fba468d3fbd1259",
+              "file": "p1-features.spec.ts",
+              "line": 30,
               "column": 7
             },
             {
-              "title": "端到端：断点调试流程",
+              "title": "P1-2: 会话回放 - 消息展开/折叠",
               "ok": false,
               "tags": [],
               "tests": [
@@ -163,64 +167,67 @@
                     {
                       "workerIndex": 1,
                       "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 64201,
+                      "status": "failed",
+                      "duration": 335,
                       "error": {
-                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:74:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
                       },
                       "errors": [
                         {
-                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
-                        },
-                        {
                           "location": {
-                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
                             "column": 16,
-                            "line": 123
+                            "line": 14
                           },
-                          "message": "Error: page.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"添加断点\")')\u001b[22m\n\n\n\u001b[0m \u001b[90m 121 |\u001b[39m     \n \u001b[90m 122 |\u001b[39m     \u001b[90m// 创建断点\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 123 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"添加断点\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 124 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"变量名\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'user_input'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 125 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"条件\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'length > 10'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 126 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"保存\")'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:123:16\u001b[22m"
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:74:11"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-01T23:31:38.433Z",
+                      "startTime": "2026-03-04T00:55:11.184Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/test-failed-1.png"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-2-会话回放---消息展开-折叠-e2e-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/error-context.md"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-2-会话回放---消息展开-折叠-e2e-chromium/video.webm"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：断点调试流程-e2e-chromium/trace.zip"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-2-会话回放---消息展开-折叠-e2e-chromium/trace.zip"
                         }
-                      ]
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
                     }
                   ],
                   "status": "unexpected"
                 }
               ],
-              "id": "71a1cccb6623f87e1233-a77f00ac0fa032a0ca3e",
-              "file": "user-journey.spec.ts",
-              "line": 112,
+              "id": "72c8f5a19cd78fd15098-56f1c10b9ade859a489c",
+              "file": "p1-features.spec.ts",
+              "line": 73,
               "column": 7
             },
             {
-              "title": "端到端：告警流程",
+              "title": "P1-3: 会话回放 - Token 和延迟显示",
               "ok": false,
               "tags": [],
               "tests": [
@@ -234,60 +241,581 @@
                     {
                       "workerIndex": 2,
                       "parallelIndex": 0,
-                      "status": "timedOut",
-                      "duration": 64080,
+                      "status": "failed",
+                      "duration": 312,
                       "error": {
-                        "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m",
-                        "stack": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:112:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
                       },
                       "errors": [
                         {
-                          "message": "\u001b[31mTest timeout of 60000ms exceeded.\u001b[39m"
-                        },
-                        {
                           "location": {
-                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts",
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
                             "column": 16,
-                            "line": 166
+                            "line": 14
                           },
-                          "message": "Error: page.click: Test timeout of 60000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"创建告警\")')\u001b[22m\n\n\n\u001b[0m \u001b[90m 164 |\u001b[39m     \n \u001b[90m 165 |\u001b[39m     \u001b[90m// 创建告警规则\u001b[39m\n\u001b[31m\u001b[1m>\u001b[22m\u001b[39m\u001b[90m 166 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mclick(\u001b[32m'button:has-text(\"创建告警\")'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m     |\u001b[39m                \u001b[31m\u001b[1m^\u001b[22m\u001b[39m\n \u001b[90m 167 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mfill(\u001b[32m'input[placeholder*=\"告警名称\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'High Latency Alert'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 168 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mselectOption(\u001b[32m'select[name=\"metric\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'latency'\u001b[39m)\u001b[33m;\u001b[39m\n \u001b[90m 169 |\u001b[39m     \u001b[36mawait\u001b[39m page\u001b[33m.\u001b[39mselectOption(\u001b[32m'select[name=\"operator\"]'\u001b[39m\u001b[33m,\u001b[39m \u001b[32m'>'\u001b[39m)\u001b[33m;\u001b[39m\u001b[0m\n\u001b[2m    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/user-journey.spec.ts:166:16\u001b[22m"
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:112:11"
                         }
                       ],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-03-01T23:32:44.168Z",
+                      "startTime": "2026-03-04T00:55:12.812Z",
                       "annotations": [],
                       "attachments": [
                         {
                           "name": "screenshot",
                           "contentType": "image/png",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/test-failed-1.png"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-3-会话回放---Token-和延迟显示-e2e-chromium/test-failed-1.png"
                         },
                         {
                           "name": "video",
                           "contentType": "video/webm",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/video.webm"
-                        },
-                        {
-                          "name": "error-context",
-                          "contentType": "text/markdown",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/error-context.md"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-3-会话回放---Token-和延迟显示-e2e-chromium/video.webm"
                         },
                         {
                           "name": "trace",
                           "contentType": "application/zip",
-                          "path": "/root/test-results/user-journey-完整用户旅程-端到端：告警流程-e2e-chromium/trace.zip"
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-3-会话回放---Token-和延迟显示-e2e-chromium/trace.zip"
                         }
-                      ]
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
                     }
                   ],
                   "status": "unexpected"
                 }
               ],
-              "id": "71a1cccb6623f87e1233-50388faa50d4ce995651",
-              "file": "user-journey.spec.ts",
-              "line": 155,
+              "id": "72c8f5a19cd78fd15098-7cbcb71785fea339f8c0",
+              "file": "p1-features.spec.ts",
+              "line": 111,
+              "column": 7
+            },
+            {
+              "title": "P1-4: 断点调试 - 创建断点",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 317,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:144:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:144:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:14.434Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-4-断点调试---创建断点-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-4-断点调试---创建断点-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-4-断点调试---创建断点-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-bf4e35bd22d9fa053aa0",
+              "file": "p1-features.spec.ts",
+              "line": 143,
+              "column": 7
+            },
+            {
+              "title": "P1-5: 断点调试 - 启用/禁用断点",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 314,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:197:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:197:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:15.991Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-5-断点调试---启用-禁用断点-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-5-断点调试---启用-禁用断点-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-5-断点调试---启用-禁用断点-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-8dca607f4d59cacfd06a",
+              "file": "p1-features.spec.ts",
+              "line": 196,
+              "column": 7
+            },
+            {
+              "title": "P1-6: 断点调试 - 查看 Snapshots",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 335,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:223:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:223:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:17.576Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-6-断点调试---查看-Snapshots-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-6-断点调试---查看-Snapshots-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-6-断点调试---查看-Snapshots-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-148173ed2fe7c4c83de5",
+              "file": "p1-features.spec.ts",
+              "line": 222,
+              "column": 7
+            },
+            {
+              "title": "P1-7: 质量评估 - 查看评估列表",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 325,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:254:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:254:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:19.212Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-7-质量评估---查看评估列表-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-7-质量评估---查看评估列表-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-7-质量评估---查看评估列表-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-1feafdaedcb5eb5376c5",
+              "file": "p1-features.spec.ts",
+              "line": 253,
+              "column": 7
+            },
+            {
+              "title": "P1-8: 质量评估 - 创建评估",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 312,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:291:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:291:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:20.812Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-8-质量评估---创建评估-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-8-质量评估---创建评估-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-8-质量评估---创建评估-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-2e8bebf27727b183c0fe",
+              "file": "p1-features.spec.ts",
+              "line": 290,
+              "column": 7
+            },
+            {
+              "title": "P1-9: 质量评估 - 评估维度显示",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 8,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 306,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:325:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:325:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:22.430Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-9-质量评估---评估维度显示-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-9-质量评估---评估维度显示-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-9-质量评估---评估维度显示-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-9f46e607532d4037840e",
+              "file": "p1-features.spec.ts",
+              "line": 324,
+              "column": 7
+            },
+            {
+              "title": "P1-10: 集成测试 - 完整 P1 工作流",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "e2e-chromium",
+                  "projectName": "e2e-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 9,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 326,
+                      "error": {
+                        "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n",
+                        "stack": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:355:11",
+                        "location": {
+                          "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                          "column": 16,
+                          "line": 14
+                        },
+                        "snippet": "  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                            "column": 16,
+                            "line": 14
+                          },
+                          "message": "Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5174/register\nCall log:\n\u001b[2m  - navigating to \"http://localhost:5174/register\", waiting until \"load\"\u001b[22m\n\n\n  12 |     const testEmail = generateTestEmail();\n  13 |     \n> 14 |     await page.goto(`${BASE_URL}/register`);\n     |                ^\n  15 |     await page.waitForSelector('input[placeholder=\"John Doe\"]', { timeout: 10000 });\n  16 |     \n  17 |     await page.fill('input[placeholder=\"John Doe\"]', 'E2E P1 Test User');\n    at registerAndLogin (/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:14:16)\n    at /root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts:355:11"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-04T00:55:24.025Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-10-集成测试---完整-P1-工作流-e2e-chromium/test-failed-1.png"
+                        },
+                        {
+                          "name": "video",
+                          "contentType": "video/webm",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-10-集成测试---完整-P1-工作流-e2e-chromium/video.webm"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "/root/test-results/p1-features-P1-功能深度测试-P1-10-集成测试---完整-P1-工作流-e2e-chromium/trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "/root/.openclaw/workspace-am-dev/projects/agent-monitor/e2e/p1-features.spec.ts",
+                        "column": 16,
+                        "line": 14
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "72c8f5a19cd78fd15098-a5e56f37660d4dc0de5b",
+              "file": "p1-features.spec.ts",
+              "line": 354,
               "column": 7
             }
           ]
@@ -297,11 +825,11 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-03-01T23:29:35.284Z",
-    "duration": 253245.872,
+    "startTime": "2026-03-04T00:55:05.934Z",
+    "duration": 18576.335,
     "expected": 0,
     "skipped": 0,
-    "unexpected": 3,
+    "unexpected": 10,
     "flaky": 0
   }
 }

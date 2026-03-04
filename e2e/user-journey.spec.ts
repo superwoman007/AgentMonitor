@@ -537,8 +537,14 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     // 2. 退出登录，清除 localStorage
     await page.evaluate(() => localStorage.clear());
     
-    // 3. 尝试用错误密码登录
-    await page.goto(`${BASE_URL}/login`);
+    // 3. 尝试用错误密码登录（用 reload 避免 SPA 重定向竞争）
+    await page.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1000);
+    // 如果被重定向，再次 navigate
+    if (!page.url().includes('/login')) {
+      await page.evaluate(() => localStorage.clear());
+      await page.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded' });
+    }
     await page.waitForLoadState('networkidle');
     
     await page.fill('input[placeholder="user@example.com"]', testEmail);
