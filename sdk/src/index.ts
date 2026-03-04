@@ -33,12 +33,20 @@ export class AgentMonitor {
   private flushTimer?: ReturnType<typeof setInterval>;
   private offlineBuffer: TraceData[] = [];
   private isOnline: boolean = true;
+  private retryTimer?: ReturnType<typeof setTimeout>;
+  private retryDelayMs: number = 5000;
+
   private currentSessionId?: string;
   private messageHistory: Array<{ role: string; content: string; timestamp: string }> = [];
   private variables: Record<string, unknown> = {};
   private pauseHandler?: BreakpointPauseHandler;
   private isPaused: boolean = false;
   private resumeCallback?: () => void;
+
+  // P0-1: 本地断点规则缓存
+  private breakpointRules: Breakpoint[] = [];
+  private breakpointCacheExpiry: number = 0;
+  private readonly BREAKPOINT_CACHE_TTL = 30_000; // 30秒缓存
 
   constructor(config: SDKConfig) {
     this.config = {
@@ -52,7 +60,16 @@ export class AgentMonitor {
 
     if (!this.config.disabled) {
       this.startFlushTimer();
+      // P0-2: 只在浏览器环境注册 online/offline 事件
       this.setupOnlineListener();
+      // P0-1: 启动时预加载断点规则
+      if (this.config.enableBreakpoints) {
+        this.refreshBreakpointRules().catch(() => {
+          // 静默失败，下次 trackMessage 时会重试
+        });
+      }
+      // P0-4: 注册进程退出钩子（Node.js 环境）
+      this.setupExitHooks();
     }
   }
 
@@ -64,11 +81,11 @@ export class AgentMonitor {
     return (async (...args: Parameters<T>) => {
       const startTime = Date.now();
       const traceName = options?.name || fn.name || 'anonymous';
-      
+
       try {
         const result = await fn(...args);
         const latencyMs = Date.now() - startTime;
-        
+
         this.trace({
           sessionId: options?.sessionId,
           traceType: 'function',
@@ -78,11 +95,11 @@ export class AgentMonitor {
           latencyMs,
           status: 'success',
         });
-        
+
         return result;
       } catch (error) {
         const latencyMs = Date.now() - startTime;
-        
+
         this.trace({
           sessionId: options?.sessionId,
           traceType: 'function',
@@ -92,7 +109,7 @@ export class AgentMonitor {
           latencyMs,
           status: 'error',
         });
-        
+
         throw error;
       }
     }) as T;
@@ -139,7 +156,7 @@ export class AgentMonitor {
       startedAt: new Date().toISOString(),
       metadata,
     };
-    
+
     this.currentSessionId = id;
     this.messageHistory = [];
     this.variables = {};
@@ -150,7 +167,7 @@ export class AgentMonitor {
   async endSession(sessionId?: string): Promise<void> {
     const sid = sessionId || this.currentSessionId;
     if (!sid) return;
-    
+
     const trace: TraceData = {
       sessionId: sid,
       traceType: 'session',
@@ -160,7 +177,7 @@ export class AgentMonitor {
     };
 
     await this.trace(trace);
-    
+
     if (sid === this.currentSessionId) {
       this.currentSessionId = undefined;
       this.messageHistory = [];
@@ -170,7 +187,7 @@ export class AgentMonitor {
 
   async trackMessage(event: Omit<MessageData, 'timestamp'> & { timestamp?: string }): Promise<void> {
     const timestamp = event.timestamp || new Date().toISOString();
-    
+
     this.messageHistory.push({
       role: event.role,
       content: event.content,
@@ -200,7 +217,7 @@ export class AgentMonitor {
 
   async trackToolCall(event: Omit<ToolCallData, 'startedAt'> & { startedAt?: string }): Promise<void> {
     const startedAt = event.startedAt || new Date().toISOString();
-    
+
     const trace: TraceData = {
       sessionId: event.sessionId,
       traceType: 'tool_call',
@@ -254,89 +271,131 @@ export class AgentMonitor {
     }
   }
 
-  private async checkAndHandleBreakpoint(context: BreakpointCheckContext): Promise<BreakpointHitResult> {
+  // ─────────────────────────────────────────────
+  // P0-1: 本地断点规则缓存 + 本地匹配
+  // ─────────────────────────────────────────────
+
+  /**
+   * 从后端拉取断点规则，缓存到本地（TTL 30秒）
+   */
+  async refreshBreakpointRules(): Promise<void> {
     try {
-      const response = await fetch(`${this.config.baseUrl}/api/v1/breakpoints/check`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({
-          projectId: this.getProjectId(),
-          context,
-        }),
-      });
+      const projectId = this.getProjectId();
+      if (!projectId) return;
 
-      if (!response.ok) {
-        return { triggered: false, breakpoints: [], resumed: true };
+      const response = await fetch(
+        `${this.config.baseUrl}/api/v1/breakpoints?projectId=${projectId}`,
+        {
+          headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json() as { breakpoints: Breakpoint[] };
+        this.breakpointRules = data.breakpoints ?? [];
+        this.breakpointCacheExpiry = Date.now() + this.BREAKPOINT_CACHE_TTL;
       }
+    } catch {
+      // 网络失败时保留旧规则
+    }
+  }
 
-      const result: BreakpointCheckResult = await response.json();
-
-      if (result.triggered && result.count > 0) {
-        const state: SnapshotState = {
-          messages: [...this.messageHistory],
-          variables: { ...this.variables },
-          metadata: {
-            sessionId: this.currentSessionId,
-            timestamp: new Date().toISOString(),
-          },
-        };
-
-        if (context.error) {
-          state.error = {
-            message: context.error,
-          };
-        }
-
-        let snapshotId: string | undefined;
-
-        for (const breakpoint of result.triggered) {
-          const snapshotResponse = await fetch(`${this.config.baseUrl}/api/v1/snapshots`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${this.config.apiKey}`,
-            },
-            body: JSON.stringify({
-              sessionId: this.currentSessionId,
-              breakpointId: breakpoint.id,
-              triggerReason: `Breakpoint "${breakpoint.name}" triggered`,
-              state,
-            }),
-          });
-
-          if (snapshotResponse.ok) {
-            const { snapshot } = await snapshotResponse.json();
-            snapshotId = snapshot.id;
-          }
-        }
-
-        if (this.pauseHandler) {
-          this.isPaused = true;
-          
-          let shouldResume = false;
-          for (const breakpoint of result.triggered) {
-            shouldResume = await this.pauseHandler(breakpoint, context, state);
-            if (!shouldResume) break;
-          }
-
-          if (!shouldResume) {
-            await new Promise<void>((resolve) => {
-              this.resumeCallback = resolve;
-            });
-          }
-          
-          this.isPaused = false;
-        }
-
-        return { triggered: true, breakpoints: result.triggered, snapshotId, resumed: true };
+  /**
+   * 本地匹配断点规则，无需网络请求
+   */
+  private matchBreakpointsLocally(context: BreakpointCheckContext): Breakpoint[] {
+    return this.breakpointRules.filter(bp => {
+      if (!bp.enabled) return false;
+      switch (bp.type) {
+        case 'keyword':
+          return !!(context.content && context.content.includes(bp.condition));
+        case 'error':
+          return !!context.error;
+        case 'latency':
+          return (context.latencyMs ?? 0) > parseInt(bp.condition, 10);
+        case 'custom':
+          // custom 类型目前退化为关键词匹配
+          return !!(context.content && context.content.includes(bp.condition));
+        default:
+          return false;
       }
+    });
+  }
 
+  /**
+   * 检查并处理断点（P0-1 改造核心：本地匹配，命中才发网络请求）
+   */
+  private async checkAndHandleBreakpoint(context: BreakpointCheckContext): Promise<BreakpointHitResult> {
+    // 缓存过期则刷新（非阻塞，本次用旧规则）
+    if (Date.now() > this.breakpointCacheExpiry) {
+      this.refreshBreakpointRules().catch(() => {});
+    }
+
+    // 本地匹配，无网络请求
+    const triggered = this.matchBreakpointsLocally(context);
+    if (triggered.length === 0) {
       return { triggered: false, breakpoints: [], resumed: true };
+    }
+
+    // 命中了才发网络请求：创建快照 + 暂停
+    try {
+      const state: SnapshotState = {
+        messages: [...this.messageHistory],
+        variables: { ...this.variables },
+        metadata: {
+          sessionId: this.currentSessionId,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      if (context.error) {
+        state.error = { message: context.error };
+      }
+
+      let snapshotId: string | undefined;
+
+      for (const breakpoint of triggered) {
+        const snapshotResponse = await fetch(`${this.config.baseUrl}/api/v1/snapshots`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify({
+            sessionId: this.currentSessionId,
+            breakpointId: breakpoint.id,
+            triggerReason: `Breakpoint "${breakpoint.name}" triggered`,
+            state,
+          }),
+        });
+
+        if (snapshotResponse.ok) {
+          const { snapshot } = await snapshotResponse.json() as { snapshot: { id: string } };
+          snapshotId = snapshot.id;
+        }
+      }
+
+      if (this.pauseHandler) {
+        this.isPaused = true;
+
+        let shouldResume = false;
+        for (const breakpoint of triggered) {
+          shouldResume = await this.pauseHandler(breakpoint, context, state);
+          if (!shouldResume) break;
+        }
+
+        if (!shouldResume) {
+          await new Promise<void>((resolve) => {
+            this.resumeCallback = resolve;
+          });
+        }
+
+        this.isPaused = false;
+      }
+
+      return { triggered: true, breakpoints: triggered, snapshotId, resumed: true };
     } catch (error) {
-      console.warn('[AgentMonitor] Failed to check breakpoints:', error);
+      console.warn('[AgentMonitor] Failed to handle breakpoint:', error);
       return { triggered: false, breakpoints: [], resumed: true };
     }
   }
@@ -345,6 +404,10 @@ export class AgentMonitor {
     const parts = this.config.apiKey.split('_');
     return parts.length > 1 ? parts[0] : '';
   }
+
+  // ─────────────────────────────────────────────
+  // Flush & 上报
+  // ─────────────────────────────────────────────
 
   async flush(): Promise<void> {
     if (this.buffer.length === 0 || this.config.disabled) return;
@@ -360,16 +423,17 @@ export class AgentMonitor {
           await this.sendSnapshot(event.data);
         }
       }
-      
+
+      // 网络恢复后，补发离线缓存
       if (this.offlineBuffer.length > 0 && this.isOnline) {
         const offlineTraces = [...this.offlineBuffer];
         this.offlineBuffer = [];
-        
         for (const trace of offlineTraces) {
           await this.sendTrace(trace);
         }
       }
     } catch (error) {
+      // 发送失败，事件放回 buffer 等待重试
       this.buffer = [...events, ...this.buffer];
       console.warn('[AgentMonitor] Failed to flush events:', error);
     }
@@ -389,15 +453,28 @@ export class AgentMonitor {
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-    } catch (error) {
-      if (!this.isOnline) {
-        this.offlineBuffer.push(trace);
+
+      // P0-2: 请求成功 → 标记在线，取消重试计时器
+      this.isOnline = true;
+      if (this.retryTimer) {
+        clearTimeout(this.retryTimer);
+        this.retryTimer = undefined;
       }
+    } catch (error) {
+      // P0-2: 请求失败 → 标记离线，缓存到 offlineBuffer，安排重试
+      this.isOnline = false;
+      this.offlineBuffer.push(trace);
+      this.scheduleRetry();
       throw error;
     }
   }
 
-  private async sendSnapshot(data: { sessionId: string; breakpointId?: string; triggerReason: string; state: SnapshotState }): Promise<void> {
+  private async sendSnapshot(data: {
+    sessionId: string;
+    breakpointId?: string;
+    triggerReason: string;
+    state: SnapshotState;
+  }): Promise<void> {
     try {
       await fetch(`${this.config.baseUrl}/api/v1/snapshots`, {
         method: 'POST',
@@ -412,9 +489,28 @@ export class AgentMonitor {
     }
   }
 
+  // ─────────────────────────────────────────────
+  // P0-2: 离线重试（网络错误驱动，兼容 Node.js）
+  // ─────────────────────────────────────────────
+
+  /**
+   * 安排重试，使用指数退避，最大 60 秒
+   */
+  private scheduleRetry(): void {
+    if (this.retryTimer) return; // 避免重复调度
+    this.retryTimer = setTimeout(async () => {
+      this.retryTimer = undefined;
+      this.retryDelayMs = Math.min(this.retryDelayMs * 2, 60_000);
+      await this.flush();
+    }, this.retryDelayMs);
+  }
+
   close(): void {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
     }
     this.flush();
   }
@@ -431,15 +527,45 @@ export class AgentMonitor {
     }
   }
 
+  /**
+   * P0-2: 兼容 Node.js 和浏览器环境
+   * 浏览器：监听 online/offline 事件
+   * Node.js：依赖 sendTrace 的错误捕获驱动
+   */
   private setupOnlineListener(): void {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('online', () => {
         this.isOnline = true;
+        this.retryDelayMs = 5000; // 重置退避
         this.flush();
       });
-      
+
       window.addEventListener('offline', () => {
         this.isOnline = false;
+      });
+    }
+    // Node.js 环境：isOnline 状态由 sendTrace 的成功/失败自动驱动
+  }
+
+  /**
+   * P0-2: Node.js 进程退出前强制 flush，减少数据丢失
+   */
+  private setupExitHooks(): void {
+    if (typeof process !== 'undefined' && typeof process.on === 'function') {
+      const flushAndExit = async (signal: string) => {
+        console.log(`[AgentMonitor] ${signal} received, flushing buffer...`);
+        await this.flush();
+        process.exit(0);
+      };
+
+      process.on('SIGTERM', () => flushAndExit('SIGTERM'));
+      process.on('SIGINT', () => flushAndExit('SIGINT'));
+
+      // 同步退出时的最后保障（exit 事件只能同步）
+      process.on('exit', () => {
+        if (this.buffer.length > 0) {
+          console.warn(`[AgentMonitor] Process exiting with ${this.buffer.length} unflushed events`);
+        }
       });
     }
   }
