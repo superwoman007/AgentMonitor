@@ -5,6 +5,8 @@ export interface SDKConfig {
   bufferSize?: number;
   flushInterval?: number;
   enableBreakpoints?: boolean;
+  sampleRate?: number; // 0-1，采样率，默认 1.0（全量）
+  alwaysCapture?: Array<'error' | 'breakpoint' | 'session'>; // 强制上报的事件类型
 }
 
 export interface SessionData {

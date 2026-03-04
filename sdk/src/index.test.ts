@@ -136,7 +136,7 @@ describe('P0-1: 断点本地缓存', () => {
   });
 
   it('enableBreakpoints=false 时，不发任何断点相关请求', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ breakpoints: [] }) } as Response);
     globalAny.fetch = fetchMock;
 
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: false });
@@ -306,5 +306,160 @@ describe('P0-2: Node.js 离线兼容', () => {
       clearTimeout(monitor['retryTimer']);
       monitor['retryTimer'] = undefined;
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// P1 测试组：采样机制
+// ─────────────────────────────────────────────────────────
+
+describe('P1: 采样机制', () => {
+  it('sampleRate=0.1，发 1000 条 trace，约 100 条被上报（误差 ±5%）', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0.1,
+    });
+
+    // 发 1000 条无 sessionId 的 trace（每条独立随机采样）
+    for (let i = 0; i < 1000; i++) {
+      await monitor.trace({ traceType: 'llm', name: 'gpt-4', status: 'success' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    // 采样率 10%，1000 条里约 100 条，误差范围 50~150（统计 5σ）
+    expect(callCount).toBeGreaterThanOrEqual(50);
+    expect(callCount).toBeLessThanOrEqual(150);
+  });
+
+  it('sampleRate=1（默认），全量上报，无丢弃', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 1,
+    });
+
+    // 发 10 条，手动 flush
+    for (let i = 0; i < 10; i++) {
+      await monitor.trace({ traceType: 'llm', name: 'gpt-4', status: 'success' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    expect(callCount).toBe(10); // 全部上报
+  });
+
+  it('错误 trace 不受采样影响（100% 上报）', async () => {
+    globalAny.fetch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0, // 采样率 0
+      alwaysCapture: ['error'], // 但错误总是捕获
+      bufferSize: 1,
+    });
+
+    // 发送 10 条错误
+    for (let i = 0; i < 10; i++) {
+      await monitor.trace({ traceType: 'llm', name: 'gpt-4', status: 'error', error: 'error msg' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    expect(callCount).toBe(10); // 错误全部上报
+  });
+
+  it('Session 级采样：同一 session 的 trace 采样决策一致（要么全采要么全不采）', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0.5,
+    });
+
+    // 同一 session 发 20 条
+    for (let i = 0; i < 20; i++) {
+      await monitor.trace({ sessionId: 'sess-consistent', traceType: 'llm', name: 'gpt-4', status: 'success' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    // session 级采样：要么全部 20 条都上报，要么 0 条
+    expect(callCount === 0 || callCount === 20).toBe(true);
+  });
+
+  it('不同 session 的采样决策独立', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0.5,
+      bufferSize: 1,
+    });
+
+    // 两个 session 各发 10 条
+    for (let i = 0; i < 10; i++) {
+      await monitor.trace({ sessionId: 'sess-1', traceType: 'llm', name: 'gpt-4', status: 'success' });
+      await monitor.trace({ sessionId: 'sess-2', traceType: 'llm', name: 'gpt-4', status: 'success' });
+    }
+    await monitor.flush();
+
+    // 验证两个 session 的决策独立（虽然不能直接验证内部状态，但可以通过采样分布推断）
+    // 实际场景下，大概率两个 session 至少有一个被采中
+    const callCount = globalAny.fetch.mock.calls.length;
+    expect(callCount).toBeGreaterThan(0);
+  });
+
+  it('sampleRate=0，全部丢弃（除非 alwaysCapture）', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0, // 全部丢弃
+      alwaysCapture: [], // 无强制捕获
+      bufferSize: 1,
+    });
+
+    // 发送 10 条普通 trace
+    for (let i = 0; i < 10; i++) {
+      await monitor.trace({ traceType: 'llm', name: 'gpt-4', status: 'success' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    expect(callCount).toBe(0); // 全部丢弃
+  });
+
+  it('断点 trace 默认被 alwaysCapture（breakpoint）包含', async () => {
+    globalAny.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
+
+    monitor = AgentMonitor.init({
+      ...BASE_CONFIG,
+      enableBreakpoints: false,
+      sampleRate: 0, // 采样率 0
+      // alwaysCapture 默认包含 'breakpoint'
+      bufferSize: 1,
+    });
+
+    // 发送 10 条断点 trace
+    for (let i = 0; i < 10; i++) {
+      await monitor.trace({ sessionId: 'sess-1', traceType: 'breakpoint', name: 'bp-test', status: 'success' });
+    }
+    await monitor.flush();
+
+    const callCount = globalAny.fetch.mock.calls.length;
+    // alwaysCapture 默认包含 'breakpoint'，所以应该全部上报
+    expect(callCount).toBe(10);
   });
 });

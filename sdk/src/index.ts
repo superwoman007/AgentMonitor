@@ -48,6 +48,9 @@ export class AgentMonitor {
   private breakpointCacheExpiry: number = 0;
   private readonly BREAKPOINT_CACHE_TTL = 30_000; // 30秒缓存
 
+  // P1: 采样机制
+  private sessionSampleDecisions = new Map<string, boolean>(); // session 级别采样决策
+
   constructor(config: SDKConfig) {
     this.config = {
       baseUrl: 'http://localhost:3000',
@@ -55,6 +58,8 @@ export class AgentMonitor {
       bufferSize: 100,
       flushInterval: 5000,
       enableBreakpoints: true,
+      sampleRate: 1.0, // 默认全量上报
+      alwaysCapture: ['error', 'breakpoint'], // 错误和断点总是上报
       ...config,
     };
 
@@ -138,6 +143,11 @@ export class AgentMonitor {
 
   async trace(data: TraceData): Promise<void> {
     if (this.config.disabled) return;
+
+    // P1: 采样检查
+    if (!this.shouldSample(data)) {
+      return; // 丢弃该 trace
+    }
 
     const enrichedData: TraceData = {
       ...data,
@@ -403,6 +413,43 @@ export class AgentMonitor {
   private getProjectId(): string {
     const parts = this.config.apiKey.split('_');
     return parts.length > 1 ? parts[0] : '';
+  }
+
+  // ─────────────────────────────────────────────
+  // P1: 采样机制
+  // ─────────────────────────────────────────────
+
+  /**
+   * 判断是否应该采样上报该 trace
+   * 优先级：
+   * 1. alwaysCapture 配置的事件类型：100% 上报
+   * 2. 其他事件：根据 sampleRate 随机采样
+   *
+   * Session 级采样：同一 session 的所有 trace 采样决策一致，避免数据割裂
+   */
+  private shouldSample(trace: TraceData): boolean {
+    // 1. 检查强制上报配置
+    if (trace.status === 'error' && this.config.alwaysCapture.includes('error')) {
+      return true;
+    }
+    if (trace.traceType === 'breakpoint' && this.config.alwaysCapture.includes('breakpoint')) {
+      return true;
+    }
+    if (trace.traceType === 'session' && this.config.alwaysCapture.includes('session')) {
+      return true;
+    }
+
+    // 2. Session 级采样决策（保证 session 内数据完整）
+    if (trace.sessionId) {
+      if (!this.sessionSampleDecisions.has(trace.sessionId)) {
+        const decision = Math.random() < this.config.sampleRate;
+        this.sessionSampleDecisions.set(trace.sessionId, decision);
+      }
+      return this.sessionSampleDecisions.get(trace.sessionId)!;
+    }
+
+    // 3. 无 session 的 trace：每次独立随机（无需保证一致性）
+    return Math.random() < this.config.sampleRate;
   }
 
   // ─────────────────────────────────────────────
