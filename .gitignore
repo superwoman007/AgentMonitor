@@ -1,9 +1,52 @@
-
+# Dependencies
 node_modules/
+package-lock.json
+
+# Build outputs
 dist/
 build/
+*.tsbuildinfo
+
+# Logs
 *.log
-.env
-.DS_Store
 logs/
 frontend.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test outputs
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+e2e-report/
+e2e-results.json
+frontend/test-results/
+frontend/test-results.json
+frontend/playwright-report/
+
+# Database files (development)
+*.db
+*.db-shm
+*.db-wal
+data/
+backend/data/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
