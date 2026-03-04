@@ -66,6 +66,14 @@
 
 ---
 
+## 📚 文档
+
+- **[SDK 快速接入指南](./docs/SDK-QUICKSTART.md)** - 3 行代码接入，支持 TypeScript/Python/Go
+- **[部署指南](./docs/DEPLOYMENT.md)** - 本地开发、Docker、生产环境部署
+- **[API 文档](./docs/API.md)** - 完整 REST API 参考（待补充）
+
+---
+
 ## 🚀 快速开始
 
 ### 方式一：Docker 启动（生产环境推荐）
@@ -314,6 +322,75 @@ agent-monitor/
 - `POST /api/v1/alerts` - 创建告警
 - `PUT /api/v1/alerts/:id` - 更新告警
 - `DELETE /api/v1/alerts/:id` - 删除告警
+
+---
+
+## 📦 SDK 支持
+
+AgentMonitor 提供 3 种语言的 SDK，3 行代码即可接入：
+
+### TypeScript/JavaScript
+
+```bash
+npm install @agentmonitor/sdk
+```
+
+```typescript
+import { AgentMonitor } from '@agentmonitor/sdk';
+
+const monitor = AgentMonitor.init({
+  apiKey: 'your_api_key',
+  baseUrl: 'http://localhost:3000',
+});
+
+const monitoredFn = monitor.wrap(async (query) => {
+  // 你的 Agent 逻辑
+  return await callLLM(query);
+});
+```
+
+### Python
+
+```bash
+pip install agentmonitor
+```
+
+```python
+from agentmonitor import AgentMonitor, SDKConfig
+
+monitor = AgentMonitor.init(SDKConfig(
+    api_key='your_api_key',
+    base_url='http://localhost:3000',
+))
+
+@monitor.wrap
+def my_agent(query):
+    # 你的 Agent 逻辑
+    return call_llm(query)
+```
+
+### Go
+
+```bash
+go get github.com/superwoman007/AgentMonitor/sdk-go/agentmonitor
+```
+
+```go
+import "github.com/superwoman007/AgentMonitor/sdk-go/agentmonitor"
+
+monitor := agentmonitor.Init(&agentmonitor.SDKConfig{
+    APIKey:  "your_api_key",
+    BaseURL: "http://localhost:3000",
+})
+defer monitor.Close()
+
+result, err := monitor.Wrap(func() (interface{}, error) {
+    // 你的 Agent 逻辑
+    return callLLM(query)
+}, "my_agent", "")
+```
+
+**完整文档**: [SDK 快速接入指南](./docs/SDK-QUICKSTART.md)
 
 ---
 
