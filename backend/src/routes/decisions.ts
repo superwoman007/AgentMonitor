@@ -8,12 +8,12 @@ import {
   deleteDecision,
   DecisionCreateData,
 } from '../services/decision.js';
-import { authenticateApiKey } from '../middleware/auth.js';
+import { apikeyMiddleware } from '../middleware/apikey.js';
 
 export default async function decisionsRoutes(fastify: FastifyInstance) {
   // 创建决策记录
   fastify.post('/decisions', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
     schema: {
       body: {
         type: 'object',
@@ -59,7 +59,7 @@ export default async function decisionsRoutes(fastify: FastifyInstance) {
 
   // 获取单个决策
   fastify.get('/decisions/:id', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
@@ -78,7 +78,7 @@ export default async function decisionsRoutes(fastify: FastifyInstance) {
 
   // 获取项目的决策列表
   fastify.get('/projects/:projectId/decisions', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
   }, async (request, reply) => {
     try {
       const { projectId } = request.params as { projectId: string };
@@ -94,7 +94,7 @@ export default async function decisionsRoutes(fastify: FastifyInstance) {
 
   // 获取会话的决策列表
   fastify.get('/sessions/:sessionId/decisions', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
   }, async (request, reply) => {
     try {
       const { sessionId } = request.params as { sessionId: string };
@@ -108,7 +108,7 @@ export default async function decisionsRoutes(fastify: FastifyInstance) {
 
   // 获取项目的决策统计
   fastify.get('/projects/:projectId/decisions/stats', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
   }, async (request, reply) => {
     try {
       const { projectId } = request.params as { projectId: string };
@@ -122,7 +122,7 @@ export default async function decisionsRoutes(fastify: FastifyInstance) {
 
   // 删除决策
   fastify.delete('/decisions/:id', {
-    preHandler: authenticateApiKey,
+    preHandler: apikeyMiddleware,
   }, async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
