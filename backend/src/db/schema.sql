@@ -185,3 +185,40 @@ CREATE TABLE IF NOT EXISTS alert_history (
 CREATE INDEX IF NOT EXISTS idx_alert_history_alert_id ON alert_history(alert_id);
 CREATE INDEX IF NOT EXISTS idx_alert_history_project_id ON alert_history(project_id);
 CREATE INDEX IF NOT EXISTS idx_alert_history_triggered_at ON alert_history(triggered_at);
+
+-- ============================================
+-- 决策监控表
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  decision_type VARCHAR(100) NOT NULL,
+  context JSONB,
+  selected_option VARCHAR(255) NOT NULL,
+  confidence DECIMAL(3,2),
+  reasoning TEXT,
+  decision_maker VARCHAR(20) NOT NULL,
+  latency_ms INTEGER,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_decisions_project_id ON decisions(project_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_session_id ON decisions(session_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(decision_type);
+CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at);
+
+CREATE TABLE IF NOT EXISTS decision_options (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  decision_id UUID REFERENCES decisions(id) ON DELETE CASCADE,
+  option_name VARCHAR(255) NOT NULL,
+  score DECIMAL(3,2),
+  pros TEXT[],
+  cons TEXT[],
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_decision_options_decision_id ON decision_options(decision_id);

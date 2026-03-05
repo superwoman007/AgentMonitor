@@ -217,6 +217,39 @@ async function initSchema(db: Database.Database): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_breakpoints_project_id ON breakpoints(project_id);
     CREATE INDEX IF NOT EXISTS idx_snapshots_session_id ON snapshots(session_id);
     CREATE INDEX IF NOT EXISTS idx_alerts_project_id ON alerts(project_id);
+
+    -- 决策表
+    CREATE TABLE IF NOT EXISTS decisions (
+      id TEXT PRIMARY KEY DEFAULT ('decision_' || lower(hex(randomblob(16)))),
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+      decision_type TEXT NOT NULL,
+      context TEXT,
+      selected_option TEXT NOT NULL,
+      confidence REAL,
+      reasoning TEXT,
+      decision_maker TEXT,
+      latency_ms REAL,
+      created_at TEXT DEFAULT (datetime('now')),
+      metadata TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS decision_options (
+      id TEXT PRIMARY KEY DEFAULT ('option_' || lower(hex(randomblob(16)))),
+      decision_id TEXT NOT NULL REFERENCES decisions(id) ON DELETE CASCADE,
+      option_name TEXT NOT NULL,
+      score REAL,
+      pros TEXT,
+      cons TEXT,
+      metadata TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_id);
+    CREATE INDEX IF NOT EXISTS idx_decisions_session ON decisions(session_id);
+    CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(decision_type);
+    CREATE INDEX IF NOT EXISTS idx_decisions_created ON decisions(created_at);
+    CREATE INDEX IF NOT EXISTS idx_decision_options_decision ON decision_options(decision_id);
   `);
   
   console.log('✅ SQLite schema initialized');
