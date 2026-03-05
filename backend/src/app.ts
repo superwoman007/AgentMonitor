@@ -14,6 +14,7 @@ import { snapshotsRoutes } from './routes/snapshots.js';
 import { qualityRoutes } from './routes/quality.js';
 import { costRoutes } from './routes/cost.js';
 import { alertsRoutes } from './routes/alerts.js';
+import decisionsRoutes from './routes/decisions.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -41,6 +42,7 @@ export async function buildApp() {
   await app.register(qualityRoutes, { prefix: `${config.api.prefix}/quality` });
   await app.register(costRoutes, { prefix: `${config.api.prefix}/cost` });
   await app.register(alertsRoutes, { prefix: `${config.api.prefix}/alerts` });
+  await app.register(decisionsRoutes, { prefix: config.api.prefix });
   await app.register(wsRoutes);
   
   app.setErrorHandler((error: FastifyError, request, reply) => {

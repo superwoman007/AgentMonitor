@@ -12,6 +12,8 @@ import type {
   SnapshotState,
   BreakpointHitResult,
   BreakpointPauseHandler,
+  DecisionData,
+  DecisionWithOptions,
 } from './types.js';
 
 type BufferedEvent = {
