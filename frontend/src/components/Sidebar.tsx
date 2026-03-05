@@ -7,6 +7,7 @@ export function Sidebar() {
   const navItems = [
     { path: '/dashboard', label: t.dashboard, icon: '📊' },
     { path: '/sessions', label: t.sessions, icon: '💬' },
+    { path: '/decisions', label: t.decisions, icon: '🧠' },
     { path: '/quality', label: t.quality, icon: '⭐' },
     { path: '/cost', label: t.cost, icon: '💰' },
     { path: '/alerts', label: t.alerts, icon: '🔔' },
