@@ -1,7 +1,7 @@
 import React from 'react';
-import { useTranslation } from '../../i18n';
-import { useProjectStore } from '../../stores/projectStore';
-import { DecisionMonitor } from '../../components/decisions/DecisionMonitor';
+import { useTranslation } from '../App';
+import { useProjectStore } from '../stores/projectStore';
+import { DecisionMonitor } from '../components/decisions/DecisionMonitor';
 
 export const DecisionsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -11,7 +11,7 @@ export const DecisionsPage: React.FC = () => {
     return (
       <div className="page-container">
         <div className="empty-state">
-          <p>{t('errors.noProjectSelected')}</p>
+          <p>Please select a project</p>
         </div>
       </div>
     );
@@ -20,9 +20,9 @@ export const DecisionsPage: React.FC = () => {
   return (
     <div className="page-container">
       <div className="page-header">
-        <h1>{t('nav.decisions')}</h1>
+        <h1>{t.decisions}</h1>
         <p className="page-description">
-          Monitor and analyze your agent's decision-making patterns
+          {t.decisionsDesc}
         </p>
       </div>
 
