@@ -182,6 +182,8 @@ export const i18n = {
     costThresholdHint: 'Threshold in dollars (e.g., 10)',
     customConditionHint: 'JavaScript expression using context.metrics',
     threshold: 'Threshold',
+    decisions: 'Decision Monitor',
+    decisionsDesc: 'Monitor and analyze your agent\'s decision-making patterns',
   },
   zh: {
     title: 'AgentMonitor',
@@ -364,6 +366,8 @@ export const i18n = {
     costThresholdHint: '阈值单位为美元（如 10）',
     customConditionHint: 'JavaScript 表达式，使用 context.metrics',
     threshold: '阈值',
+    decisions: '决策监控',
+    decisionsDesc: '监控和分析 AI Agent 的决策模式',
   },
 };
 

@@ -14,6 +14,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { QualityPage } from './pages/QualityPage';
 import { CostPage } from './pages/CostPage';
 import { AlertsPage } from './pages/AlertsPage';
+import { DecisionsPage } from './pages/DecisionsPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 interface TranslationContextType {
@@ -100,6 +101,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <SessionDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/decisions"
+        element={
+          <ProtectedRoute>
+            <DecisionsPage />
           </ProtectedRoute>
         }
       />

@@ -12,6 +12,8 @@ import type {
   SnapshotState,
   BreakpointHitResult,
   BreakpointPauseHandler,
+  DecisionData,
+  DecisionWithOptions,
 } from './types.js';
 
 type BufferedEvent = {
@@ -258,6 +260,46 @@ export class AgentMonitor {
         latencyMs: event.latencyMs,
         toolName: event.toolName,
       });
+    }
+  }
+
+  async trackDecision(data: DecisionData): Promise<void> {
+    const trace: TraceData = {
+      sessionId: data.sessionId,
+      traceType: 'decision',
+      name: data.decisionType,
+      input: {
+        context: data.context,
+        options: data.options,
+      },
+      output: {
+        selectedOption: data.selectedOption,
+        confidence: data.confidence,
+        reasoning: data.reasoning,
+      },
+      metadata: {
+        ...data.metadata,
+        decisionMaker: data.decisionMaker,
+      },
+      latencyMs: data.latencyMs,
+      status: 'success',
+    };
+
+    await this.trace(trace);
+
+    // 异步上报决策数据到决策监控API
+    try {
+      await fetch(`${this.config.baseUrl}/api/v1/decisions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': this.config.apiKey,
+        },
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      // 静默失败，不影响主业务流程
+      console.warn('[AgentMonitor] Failed to report decision:', error);
     }
   }
 

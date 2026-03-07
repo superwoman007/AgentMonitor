@@ -1,0 +1,76 @@
+.decision-monitor {
+  padding: 24px;
+  background: #f5f5f7;
+  min-height: 100vh;
+}
+
+.decision-monitor.loading,
+.decision-monitor.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 16px;
+}
+
+.decision-monitor .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e0e0e0;
+  border-top-color: #2196f3;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.decision-monitor .error-icon {
+  font-size: 48px;
+}
+
+.decision-monitor button {
+  padding: 8px 16px;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.decision-monitor button:hover {
+  background: #1976d2;
+}
+
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.monitor-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.refresh-info {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.decisions-section {
+  margin-top: 24px;
+}
+
+.decisions-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
