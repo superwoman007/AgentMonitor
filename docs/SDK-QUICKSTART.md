@@ -423,6 +423,15 @@ monitor.trackMessage({
 });
 ```
 
+#### 断点拉取与快照（API Key）
+
+SDK 使用 API Key 拉取断点与创建快照（自托管场景默认启用）：
+
+- `GET /api/v1/breakpoints/public`
+- `POST /api/v1/snapshots`
+
+请求头支持：`X-API-Key` 或 `Authorization: Bearer <API_KEY>`。
+
 ### 2. 采样机制
 
 高频场景下降低开销：
@@ -461,6 +470,58 @@ monitor.trackMessage({ sessionId: session.id, role: 'assistant', content: 'Good!
 
 monitor.endSession(session.id);
 ```
+
+---
+
+## 🧪 Demo Agent 快速体验
+
+如果你想快速看到效果，可以直接运行内置 demo-agent：
+
+1) 启动后端与前端
+
+```bash
+./start-all.sh
+```
+
+2) 构建本地 SDK（demo-agent 依赖本地 dist）
+
+```bash
+cd sdk
+npm install
+npm run build
+```
+
+3) 配置 demo-agent 环境变量（复制 `demo-agent/.env.example`）
+
+```env
+MONITOR_API_KEY=your-api-key-here
+MONITOR_API_URL=http://localhost:3000
+
+# 兼容写法（可选）
+AGENTMONITOR_API_KEY=your-api-key-here
+AGENTMONITOR_BASE_URL=http://localhost:3000
+```
+
+4) 运行 demo-agent
+
+```bash
+cd demo-agent
+npm install
+npm run dev
+```
+
+5) 打开面板查看效果
+
+- Dashboard: http://localhost:5174/dashboard
+- Sessions: http://localhost:5174/sessions
+- Debugging: http://localhost:5174/debugging
+
+#### 会话/消息自动同步
+
+当上报 trace 时：
+
+- 只要携带 `sessionId`，后端会自动创建会话记录（若不存在）。
+- `trackMessage` 产生的 message trace 会同步写入消息列表，Sessions 页面可直接回放。
 
 ---
 
@@ -511,6 +572,15 @@ const monitor = AgentMonitor.init({ apiKey: '...', disabled: true });
 
 // 2. 或者直接移除 SDK 代码
 ```
+
+### Q: 运行 demo-agent 后看不到数据？
+
+**A:** 按顺序排查：
+
+1. 后端是否运行：`http://localhost:3000/health`
+2. API Key 是否正确（Settings 页面重新生成）
+3. 是否先构建 SDK：`cd sdk && npm run build`
+4. demo-agent 是否读取到环境变量（确认 `.env` 路径与变量名）
 
 ---
 

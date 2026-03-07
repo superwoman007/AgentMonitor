@@ -8,12 +8,27 @@ interface StatsCardsProps {
 export function StatsCards({ stats }: StatsCardsProps) {
   const { t } = useTranslation();
 
+  const formatNumber = (value: unknown) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return '0';
+    return value.toLocaleString();
+  };
+
+  const formatPercent = (value: unknown) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return '0%';
+    return `${value.toFixed(2)}%`;
+  };
+
+  const formatLatency = (value: unknown) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return '0ms';
+    return `${value.toFixed(1)}ms`;
+  };
+
   const cards = [
-    { label: t.totalRequests, value: stats?.totalRequests || 0, color: 'text-blue-600', icon: '📊' },
-    { label: t.successful, value: stats?.successfulRequests || 0, color: 'text-green-600', icon: '✅' },
-    { label: t.successRate, value: `${stats?.successRate || 0}%`, color: 'text-purple-600', icon: '📈' },
-    { label: t.avgLatency, value: `${stats?.avgLatency || 0}ms`, color: 'text-orange-600', icon: '⚡' },
-    { label: t.totalTokens, value: stats?.totalTokens || 0, color: 'text-indigo-600', icon: '🔤' },
+    { label: t.totalRequests, value: formatNumber(stats?.totalRequests ?? 0), color: 'text-blue-600', icon: '📊' },
+    { label: t.successful, value: formatNumber(stats?.successfulRequests ?? 0), color: 'text-green-600', icon: '✅' },
+    { label: t.successRate, value: formatPercent(stats?.successRate ?? 0), color: 'text-purple-600', icon: '📈' },
+    { label: t.avgLatency, value: formatLatency(stats?.avgLatency ?? 0), color: 'text-orange-600', icon: '⚡' },
+    { label: t.totalTokens, value: formatNumber(stats?.totalTokens ?? 0), color: 'text-indigo-600', icon: '🔤' },
   ];
 
   return (
@@ -25,7 +40,7 @@ export function StatsCards({ stats }: StatsCardsProps) {
             <span className="text-lg">{card.icon}</span>
           </div>
           <p className={`text-2xl font-bold ${card.color}`}>
-            {typeof card.value === 'number' ? card.value.toLocaleString() : card.value}
+            {card.value}
           </p>
         </div>
       ))}

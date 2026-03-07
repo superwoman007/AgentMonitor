@@ -12,14 +12,30 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 启动后端与前端
+
+```bash
+./start-all.sh
+```
+
+### 2. 构建本地 SDK
+
+demo-agent 依赖本地 SDK 的 `dist` 目录：
+
+```bash
+cd sdk
+npm install
+npm run build
+```
+
+### 3. 安装依赖
 
 ```bash
 cd demo-agent
 npm install
 ```
 
-### 2. 配置环境变量
+### 4. 配置环境变量
 
 创建 `.env` 文件：
 
@@ -29,11 +45,17 @@ MONITOR_API_KEY=your-api-key-here
 MONITOR_API_URL=http://localhost:3000
 ```
 
-### 3. 运行 Demo
+### 5. 运行 Demo
 
 ```bash
 npm run dev
 ```
+
+### 6. 查看效果
+
+- Dashboard: http://localhost:5174/dashboard
+- Sessions: http://localhost:5174/sessions
+- Debugging: http://localhost:5174/debugging
 
 ## Demo 场景
 
@@ -70,3 +92,12 @@ demo-agent/
 ├── tsconfig.json
 └── README.md
 ```
+
+## 常见问题
+
+### 运行后看不到数据？
+
+1. 检查后端健康：`http://localhost:3000/health`
+2. 确认 API Key 正确（Settings 页面重新生成）
+3. 确认 SDK 已构建：`cd sdk && npm run build`
+4. 确认 `.env` 变量名与路径正确

@@ -6,14 +6,15 @@ import { api, Session } from '../api';
 import { useTranslation } from '../App';
 
 export function SessionsPage() {
-  const { currentProject, fetchProjects } = useProjectStore();
+  const { currentProject, ensureDefaultProject } = useProjectStore();
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    ensureDefaultProject().finally(() => setBootstrapped(true));
+  }, [ensureDefaultProject]);
 
   useEffect(() => {
     if (currentProject) {
@@ -24,6 +25,12 @@ export function SessionsPage() {
         .finally(() => setIsLoading(false));
     }
   }, [currentProject]);
+
+  useEffect(() => {
+    if (bootstrapped && !currentProject) {
+      setIsLoading(false);
+    }
+  }, [bootstrapped, currentProject]);
 
   return (
     <Layout>

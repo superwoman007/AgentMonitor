@@ -110,7 +110,7 @@ export function DebuggingPage() {
                 <p className="text-sm text-gray-500">{new Date(snap.timestamp).toLocaleString()}</p>
                 <details className="mt-2">
                   <summary className="cursor-pointer text-blue-600">{t.viewDetails}</summary>
-                  <pre className="mt-2 bg-gray-50 p-3 rounded text-xs overflow-auto">
+                  <pre className="mt-2 bg-gray-50 p-3 rounded text-xs overflow-auto whitespace-pre-wrap break-words max-h-80">
                     {JSON.stringify(snap.state, null, 2)}
                   </pre>
                 </details>
@@ -162,8 +162,8 @@ export function DebuggingPage() {
                     required
                     placeholder={
                       newBreakpoint.type === 'keyword' ? 'e.g., "error", "failed"' :
-                      newBreakpoint.type === 'error' ? 'any' :
-                      'e.g., "> 5000" (ms)'
+                      newBreakpoint.type === 'error' ? 'e.g., "timeout|failed"' :
+                      'e.g., "5000" (ms)'
                     }
                   />
                 </div>

@@ -34,6 +34,12 @@ export function DashboardPage() {
   }, [projects.length, currentProject, ensureDefaultProject]);
 
   useEffect(() => {
+    if (token && !currentProject) {
+      ensureDefaultProject();
+    }
+  }, [token, currentProject, ensureDefaultProject]);
+
+  useEffect(() => {
     if (currentProject) {
       fetchTraces(currentProject.id);
       fetchStats(currentProject.id);
@@ -44,15 +50,22 @@ export function DashboardPage() {
     if (!currentProject) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/ws?projectId=${currentProject.id}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?projectId=${currentProject.id}`;
+    let alive = true;
+    let retryTimer: number | undefined;
 
     const connect = () => {
+      if (!alive) return;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('WebSocket connected');
         setWsStatus('connected');
+        try {
+          ws.send(JSON.stringify({ type: 'subscribe', projectId: currentProject.id }));
+        } catch {
+        }
       };
 
       ws.onmessage = (event) => {
@@ -65,18 +78,20 @@ export function DashboardPage() {
             // Initial data handled by fetchTraces
           }
         } catch (e) {
-          console.error('Failed to parse WS message:', e);
+          console.warn('Failed to parse WS message:', e);
         }
       };
 
       ws.onclose = () => {
         console.log('WebSocket disconnected');
+        if (!alive) return;
         setWsStatus('reconnecting');
-        setTimeout(connect, 3000);
+        retryTimer = window.setTimeout(connect, 3000);
       };
 
       ws.onerror = (err) => {
-        console.error('WebSocket error:', err);
+        console.warn('WebSocket error:', err);
+        if (!alive) return;
         setWsStatus('disconnected');
       };
     };
@@ -84,11 +99,20 @@ export function DashboardPage() {
     connect();
 
     return () => {
+      alive = false;
+      if (retryTimer) {
+        window.clearTimeout(retryTimer);
+      }
       if (wsRef.current) {
+        wsRef.current.onopen = null;
+        wsRef.current.onmessage = null;
+        wsRef.current.onclose = null;
+        wsRef.current.onerror = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
-  }, [currentProject]);
+  }, [currentProject?.id, addTrace]);
 
   return (
     <Layout>

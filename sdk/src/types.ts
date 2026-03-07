@@ -1,6 +1,7 @@
 export interface SDKConfig {
   apiKey: string;
   baseUrl?: string;
+  apiPrefix?: string;
   disabled?: boolean;
   bufferSize?: number;
   flushInterval?: number;

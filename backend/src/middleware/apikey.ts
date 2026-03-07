@@ -8,10 +8,13 @@ declare module 'fastify' {
 }
 
 export async function apikeyMiddleware(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-  const apiKey = request.headers['x-api-key'] as string;
+  const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
+  const authHeader = request.headers.authorization;
+  const bearerKey = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const apiKey = apiKeyHeader || bearerKey;
   
   if (!apiKey) {
-    reply.code(401).send({ error: 'Missing X-API-Key header' });
+    reply.code(401).send({ error: 'Missing API key' });
     return;
   }
   

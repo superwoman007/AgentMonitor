@@ -13,9 +13,20 @@ import {
 } from '../services/breakpoint.js';
 import { createSnapshot } from '../services/snapshot.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { apikeyMiddleware } from '../middleware/apikey.js';
 import { getProjectById } from '../services/project.js';
 
 export async function breakpointsRoutes(app: FastifyInstance): Promise<void> {
+  app.get('/public', { preHandler: apikeyMiddleware }, async (request, reply) => {
+    if (!request.projectId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const breakpoints = await getBreakpointsByProject(request.projectId);
+    reply.send({ breakpoints });
+  });
+
   app.get('/', { preHandler: authMiddleware }, async (request, reply) => {
     if (!request.userId) {
       reply.code(401).send({ error: 'Unauthorized' });

@@ -37,6 +37,7 @@ export interface TraceInput {
 
 export async function createTrace(data: TraceInput): Promise<Trace> {
   const id = uuidv4();
+  const status = data.status ?? (data.error ? 'error' : 'success');
   
   const trace = await queryOne<Trace>(
     `INSERT INTO traces (
@@ -56,8 +57,8 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
       data.metadata ? JSON.stringify(data.metadata) : null,
       data.startedAt.toISOString(),
       data.endedAt ? data.endedAt.toISOString() : null,
-      data.latencyMs || null,
-      data.status || 'pending',
+      data.latencyMs ?? null,
+      status,
       data.error || null,
     ]
   );

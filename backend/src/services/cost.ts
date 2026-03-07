@@ -1,4 +1,5 @@
 import { query, queryOne } from '../db/index.js';
+import { config } from '../config.js';
 
 export interface ModelPricing {
   input: number;
@@ -53,8 +54,15 @@ export interface CostSuggestion {
 
 function getModelPricing(model: string): ModelPricing {
   const normalizedModel = model.toLowerCase();
-  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
-    if (normalizedModel.includes(key.toLowerCase()) || key.toLowerCase().includes(normalizedModel)) {
+  const keys = Object.keys(MODEL_PRICING)
+    .filter((k) => k !== 'default')
+    .sort((a, b) => b.length - a.length);
+
+  for (const key of keys) {
+    const pricing = MODEL_PRICING[key];
+    if (!pricing) continue;
+    const lower = key.toLowerCase();
+    if (normalizedModel.includes(lower) || lower.includes(normalizedModel)) {
       return pricing;
     }
   }
@@ -62,133 +70,218 @@ function getModelPricing(model: string): ModelPricing {
 }
 
 function extractModelFromMetadata(metadata: unknown): string {
-  if (!metadata || typeof metadata !== 'object') return 'unknown';
-  const meta = metadata as Record<string, unknown>;
+  const parsed = parseJsonIfString(metadata);
+  if (!parsed || typeof parsed !== 'object') return 'unknown';
+  const meta = parsed as Record<string, unknown>;
   return (meta.model as string) || (meta.modelId as string) || 'unknown';
 }
 
 function extractTokensFromMetadata(metadata: unknown): { input: number; output: number } {
-  if (!metadata || typeof metadata !== 'object') return { input: 0, output: 0 };
-  const meta = metadata as Record<string, unknown>;
+  const parsed = parseJsonIfString(metadata);
+  if (!parsed || typeof parsed !== 'object') return { input: 0, output: 0 };
+  const meta = parsed as Record<string, unknown>;
   
   const usage = meta.usage as Record<string, unknown> | undefined;
   if (usage) {
     return {
-      input: (usage.prompt_tokens as number) || (usage.inputTokens as number) || 0,
-      output: (usage.completion_tokens as number) || (usage.outputTokens as number) || 0,
+      input:
+        (usage.prompt_tokens as number) ||
+        (usage.inputTokens as number) ||
+        (usage.input_tokens as number) ||
+        0,
+      output:
+        (usage.completion_tokens as number) ||
+        (usage.outputTokens as number) ||
+        (usage.output_tokens as number) ||
+        0,
     };
   }
   
   return {
-    input: (meta.prompt_tokens as number) || (meta.inputTokens as number) || 0,
-    output: (meta.completion_tokens as number) || (meta.outputTokens as number) || 0,
+    input: (meta.prompt_tokens as number) || (meta.inputTokens as number) || (meta.input_tokens as number) || 0,
+    output: (meta.completion_tokens as number) || (meta.outputTokens as number) || (meta.output_tokens as number) || 0,
   };
 }
 
+function parseJsonIfString(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return value;
+  if (trimmed[0] !== '{' && trimmed[0] !== '[' && trimmed[0] !== '"') return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 export async function getCostByProject(projectId: string, days: number = 7): Promise<CostSummary> {
+  const isSqlite = config.dbType === 'sqlite';
+
+  const tokenCostExprSqlite = `
+    (COALESCE(json_extract(metadata, '$.usage.prompt_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.usage.input_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.inputTokens'), 0) +
+     COALESCE(json_extract(metadata, '$.input_tokens'), 0)) * 0.001 / 1000 +
+    (COALESCE(json_extract(metadata, '$.usage.completion_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.usage.output_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.outputTokens'), 0) +
+     COALESCE(json_extract(metadata, '$.output_tokens'), 0)) * 0.002 / 1000
+  `;
+
+  const tokenCostExprPostgres = `
+    (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) +
+     COALESCE((metadata->'usage'->>'input_tokens')::int, 0) +
+     COALESCE((metadata->>'inputTokens')::int, 0) +
+     COALESCE((metadata->>'input_tokens')::int, 0)) * 0.001 / 1000 +
+    (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) +
+     COALESCE((metadata->'usage'->>'output_tokens')::int, 0) +
+     COALESCE((metadata->>'outputTokens')::int, 0) +
+     COALESCE((metadata->>'output_tokens')::int, 0)) * 0.002 / 1000
+  `;
+
+  const costExpr = isSqlite ? tokenCostExprSqlite : tokenCostExprPostgres;
+
   const [today, week, month, total] = await Promise.all([
-    queryOne<{ cost: string }>(
-      `SELECT COALESCE(SUM(
-        (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) + 
-         COALESCE((metadata->>'inputTokens')::int, 0)) * 0.001 / 1000 +
-        (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) + 
-         COALESCE((metadata->>'outputTokens')::int, 0)) * 0.002 / 1000
-      ), 0)::text as cost
-       FROM traces 
-       WHERE project_id = $1 
-       AND started_at > NOW() - INTERVAL '1 day'`,
+    queryOne<{ cost: unknown }>(
+      isSqlite
+        ? `SELECT COALESCE(SUM(${costExpr}), 0) as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND datetime(started_at) > datetime('now', '-1 day')`
+        : `SELECT COALESCE(SUM(${costExpr}), 0)::text as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND started_at > NOW() - INTERVAL '1 day'`,
       [projectId]
     ),
-    queryOne<{ cost: string }>(
-      `SELECT COALESCE(SUM(
-        (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) + 
-         COALESCE((metadata->>'inputTokens')::int, 0)) * 0.001 / 1000 +
-        (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) + 
-         COALESCE((metadata->>'outputTokens')::int, 0)) * 0.002 / 1000
-      ), 0)::text as cost
-       FROM traces 
-       WHERE project_id = $1 
-       AND started_at > NOW() - INTERVAL '7 days'`,
+    queryOne<{ cost: unknown }>(
+      isSqlite
+        ? `SELECT COALESCE(SUM(${costExpr}), 0) as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND datetime(started_at) > datetime('now', '-7 days')`
+        : `SELECT COALESCE(SUM(${costExpr}), 0)::text as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND started_at > NOW() - INTERVAL '7 days'`,
       [projectId]
     ),
-    queryOne<{ cost: string }>(
-      `SELECT COALESCE(SUM(
-        (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) + 
-         COALESCE((metadata->>'inputTokens')::int, 0)) * 0.001 / 1000 +
-        (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) + 
-         COALESCE((metadata->>'outputTokens')::int, 0)) * 0.002 / 1000
-      ), 0)::text as cost
-       FROM traces 
-       WHERE project_id = $1 
-       AND started_at > NOW() - INTERVAL '30 days'`,
+    queryOne<{ cost: unknown }>(
+      isSqlite
+        ? `SELECT COALESCE(SUM(${costExpr}), 0) as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND datetime(started_at) > datetime('now', '-30 days')`
+        : `SELECT COALESCE(SUM(${costExpr}), 0)::text as cost
+           FROM traces 
+           WHERE project_id = $1 
+           AND started_at > NOW() - INTERVAL '30 days'`,
       [projectId]
     ),
-    queryOne<{ cost: string }>(
-      `SELECT COALESCE(SUM(
-        (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) + 
-         COALESCE((metadata->>'inputTokens')::int, 0)) * 0.001 / 1000 +
-        (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) + 
-         COALESCE((metadata->>'outputTokens')::int, 0)) * 0.002 / 1000
-      ), 0)::text as cost
-       FROM traces 
-       WHERE project_id = $1`,
+    queryOne<{ cost: unknown }>(
+      isSqlite
+        ? `SELECT COALESCE(SUM(${costExpr}), 0) as cost
+           FROM traces 
+           WHERE project_id = $1`
+        : `SELECT COALESCE(SUM(${costExpr}), 0)::text as cost
+           FROM traces 
+           WHERE project_id = $1`,
       [projectId]
     ),
   ]);
 
+  const toNumber = (value: unknown): number =>
+    value === null || value === undefined ? 0 : Number(value);
+
   return {
-    today: parseFloat(today?.cost || '0'),
-    week: parseFloat(week?.cost || '0'),
-    month: parseFloat(month?.cost || '0'),
-    total: parseFloat(total?.cost || '0'),
+    today: toNumber(today?.cost),
+    week: toNumber(week?.cost),
+    month: toNumber(month?.cost),
+    total: toNumber(total?.cost),
   };
 }
 
 export async function getCostByModel(projectId: string): Promise<CostByModel[]> {
-  const traces = await query<{
-    metadata: unknown;
-    count: string;
+  const isSqlite = config.dbType === 'sqlite';
+
+  const rows = await query<{
+    model: string | null;
+    count: unknown;
+    input_tokens: unknown;
+    output_tokens: unknown;
   }>(
-    `SELECT metadata, COUNT(*)::text as count
-     FROM traces 
-     WHERE project_id = $1 
-     AND metadata IS NOT NULL
-     GROUP BY metadata`,
+    isSqlite
+      ? `SELECT
+          COALESCE(
+            json_extract(metadata, '$.model'),
+            json_extract(metadata, '$.modelId'),
+            'unknown'
+          ) as model,
+          COUNT(*) as count,
+          SUM(
+            COALESCE(json_extract(metadata, '$.usage.prompt_tokens'), 0) +
+            COALESCE(json_extract(metadata, '$.usage.input_tokens'), 0) +
+            COALESCE(json_extract(metadata, '$.inputTokens'), 0)
+            + COALESCE(json_extract(metadata, '$.input_tokens'), 0)
+          ) as input_tokens,
+          SUM(
+            COALESCE(json_extract(metadata, '$.usage.completion_tokens'), 0) +
+            COALESCE(json_extract(metadata, '$.usage.output_tokens'), 0) +
+            COALESCE(json_extract(metadata, '$.outputTokens'), 0)
+            + COALESCE(json_extract(metadata, '$.output_tokens'), 0)
+          ) as output_tokens
+         FROM traces
+         WHERE project_id = $1
+         AND metadata IS NOT NULL
+         GROUP BY model`
+      : `SELECT
+          COALESCE(metadata->>'model', metadata->>'modelId', 'unknown') as model,
+          COUNT(*)::text as count,
+          SUM(
+            COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) +
+            COALESCE((metadata->'usage'->>'input_tokens')::int, 0) +
+            COALESCE((metadata->>'inputTokens')::int, 0) +
+            COALESCE((metadata->>'input_tokens')::int, 0)
+          )::text as input_tokens,
+          SUM(
+            COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) +
+            COALESCE((metadata->'usage'->>'output_tokens')::int, 0) +
+            COALESCE((metadata->>'outputTokens')::int, 0) +
+            COALESCE((metadata->>'output_tokens')::int, 0)
+          )::text as output_tokens
+         FROM traces
+         WHERE project_id = $1
+         AND metadata IS NOT NULL
+         GROUP BY COALESCE(metadata->>'model', metadata->>'modelId', 'unknown')`,
     [projectId]
   );
 
-  const modelCosts: Record<string, CostByModel> = {};
+  const toInt = (v: unknown): number =>
+    v === null || v === undefined ? 0 : parseInt(String(v), 10) || 0;
 
-  for (const trace of traces) {
-    const model = extractModelFromMetadata(trace.metadata);
-    const tokens = extractTokensFromMetadata(trace.metadata);
+  const byModel: CostByModel[] = rows.map((r) => {
+    const model = (r.model || 'unknown').toString();
+    const count = toInt(r.count);
+    const inputTokens = toInt(r.input_tokens);
+    const outputTokens = toInt(r.output_tokens);
     const pricing = getModelPricing(model);
-    const count = parseInt(trace.count, 10);
-    
-    const inputCost = (tokens.input * pricing.input * count) / 1000;
-    const outputCost = (tokens.output * pricing.output * count) / 1000;
 
-    if (modelCosts[model]) {
-      modelCosts[model].count += count;
-      modelCosts[model].totalCost += inputCost + outputCost;
-      modelCosts[model].inputCost += inputCost;
-      modelCosts[model].outputCost += outputCost;
-      modelCosts[model].inputTokens += tokens.input * count;
-      modelCosts[model].outputTokens += tokens.output * count;
-    } else {
-      modelCosts[model] = {
-        model,
-        count,
-        totalCost: inputCost + outputCost,
-        inputCost,
-        outputCost,
-        inputTokens: tokens.input * count,
-        outputTokens: tokens.output * count,
-      };
-    }
-  }
+    const inputCost = (inputTokens * pricing.input) / 1000;
+    const outputCost = (outputTokens * pricing.output) / 1000;
 
-  return Object.values(modelCosts).sort((a, b) => b.totalCost - a.totalCost);
+    return {
+      model,
+      count,
+      totalCost: inputCost + outputCost,
+      inputCost,
+      outputCost,
+      inputTokens,
+      outputTokens,
+    };
+  });
+
+  return byModel.sort((a, b) => b.totalCost - a.totalCost);
 }
 
 export async function getMostExpensive(
@@ -258,7 +351,15 @@ export async function getCostOptimizationSuggestions(projectId: string): Promise
   }
 
   const traces = await query<{ count: string }>(
-    `SELECT COUNT(*)::text as count FROM traces WHERE project_id = $1 AND started_at > NOW() - INTERVAL '24 hours'`,
+    config.dbType === 'sqlite'
+      ? `SELECT COUNT(*) as count 
+         FROM traces 
+         WHERE project_id = $1 
+         AND datetime(started_at) > datetime('now', '-1 day')`
+      : `SELECT COUNT(*)::text as count 
+         FROM traces 
+         WHERE project_id = $1 
+         AND started_at > NOW() - INTERVAL '24 hours'`,
     [projectId]
   );
   
@@ -282,31 +383,62 @@ export async function getCostOptimizationSuggestions(projectId: string): Promise
 }
 
 export async function getCostTrend(projectId: string, days: number = 7): Promise<{ date: string; cost: number; count: number }[]> {
+  const isSqlite = config.dbType === 'sqlite';
+
+  const tokenCostExprSqlite = `
+    (COALESCE(json_extract(metadata, '$.usage.prompt_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.usage.input_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.inputTokens'), 0) +
+     COALESCE(json_extract(metadata, '$.input_tokens'), 0)) * 0.001 / 1000 +
+    (COALESCE(json_extract(metadata, '$.usage.completion_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.usage.output_tokens'), 0) +
+     COALESCE(json_extract(metadata, '$.outputTokens'), 0) +
+     COALESCE(json_extract(metadata, '$.output_tokens'), 0)) * 0.002 / 1000
+  `;
+
+  const tokenCostExprPostgres = `
+    (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) +
+     COALESCE((metadata->'usage'->>'input_tokens')::int, 0) +
+     COALESCE((metadata->>'inputTokens')::int, 0) +
+     COALESCE((metadata->>'input_tokens')::int, 0)) * 0.001 / 1000 +
+    (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) +
+     COALESCE((metadata->'usage'->>'output_tokens')::int, 0) +
+     COALESCE((metadata->>'outputTokens')::int, 0) +
+     COALESCE((metadata->>'output_tokens')::int, 0)) * 0.002 / 1000
+  `;
+
+  const costExpr = isSqlite ? tokenCostExprSqlite : tokenCostExprPostgres;
+
   const result = await query<{
     date: string;
-    cost: string;
-    count: string;
+    cost: unknown;
+    count: unknown;
   }>(
-    `SELECT 
-      DATE(started_at) as date,
-      COALESCE(SUM(
-        (COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) + 
-         COALESCE((metadata->>'inputTokens')::int, 0)) * 0.001 / 1000 +
-        (COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) + 
-         COALESCE((metadata->>'outputTokens')::int, 0)) * 0.002 / 1000
-      ), 0)::text as cost,
-      COUNT(*)::text as count
-     FROM traces 
-     WHERE project_id = $1 
-     AND started_at > NOW() - INTERVAL '1 day' * $2
-     GROUP BY DATE(started_at)
-     ORDER BY date DESC`,
+    isSqlite
+      ? `SELECT 
+          date(datetime(started_at)) as date,
+          COALESCE(SUM(${costExpr}), 0) as cost,
+          COUNT(*) as count
+         FROM traces 
+         WHERE project_id = $1 
+         AND datetime(started_at) > datetime('now', '-' || $2 || ' days')
+         GROUP BY date(datetime(started_at))
+         ORDER BY date DESC`
+      : `SELECT 
+          DATE(started_at) as date,
+          COALESCE(SUM(${costExpr}), 0)::text as cost,
+          COUNT(*)::text as count
+         FROM traces 
+         WHERE project_id = $1 
+         AND started_at > NOW() - INTERVAL '1 day' * $2
+         GROUP BY DATE(started_at)
+         ORDER BY date DESC`,
     [projectId, days]
   );
 
   return result.map((row) => ({
     date: row.date,
-    cost: parseFloat(row.cost),
-    count: parseInt(row.count, 10),
+    cost: Number(row.cost ?? 0),
+    count: typeof row.count === 'number' ? row.count : parseInt(String(row.count), 10),
   }));
 }

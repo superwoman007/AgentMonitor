@@ -4,8 +4,14 @@ import { CustomerServiceAgent } from './agent.js';
 
 dotenv.config();
 
-const MONITOR_API_KEY = process.env.MONITOR_API_KEY || 'demo-api-key';
-const MONITOR_API_URL = process.env.MONITOR_API_URL || 'http://localhost:3000';
+const MONITOR_API_KEY =
+  process.env.MONITOR_API_KEY ||
+  process.env.AGENTMONITOR_API_KEY ||
+  'demo-api-key';
+const MONITOR_API_URL =
+  process.env.MONITOR_API_URL ||
+  process.env.AGENTMONITOR_BASE_URL ||
+  'http://localhost:3000';
 
 async function main() {
   console.log('🤖 Starting Demo Customer Service Agent...');
@@ -35,6 +41,14 @@ async function main() {
   // 演示 4: 高延迟调用（展示延迟断点）
   console.log('=== Demo 4: 高延迟调用（延迟断点演示） ===');
   await agent.handleUserMessage('查一下深圳的天气，但我要你慢一点');
+  console.log('');
+
+  // 演示 5: LLM 调用（展示 Token 统计）
+  console.log('=== Demo 5: LLM 调用（Token 统计演示） ===');
+  await agent.handleUserMessage('我想了解一下你们的服务介绍');
+  console.log('');
+
+  await agent.endSession();
   console.log('');
 
   console.log('✅ Demo 完成！');

@@ -11,6 +11,12 @@ export interface Snapshot {
   created_at: Date;
 }
 
+type SnapshotRow = Omit<Snapshot, 'state' | 'timestamp' | 'created_at'> & {
+  state: unknown;
+  timestamp: unknown;
+  created_at: unknown;
+};
+
 export interface SnapshotCreateData {
   sessionId: string;
   breakpointId?: string;
@@ -43,7 +49,7 @@ export interface SnapshotState {
 export async function createSnapshot(data: SnapshotCreateData): Promise<Snapshot> {
   const id = uuidv4();
   
-  const snapshot = await queryOne<Snapshot>(
+  const snapshot = await queryOne<SnapshotRow>(
     `INSERT INTO snapshots (id, session_id, breakpoint_id, trigger_reason, state, timestamp)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
@@ -61,29 +67,32 @@ export async function createSnapshot(data: SnapshotCreateData): Promise<Snapshot
     throw new Error('Failed to create snapshot');
   }
   
-  return snapshot;
+  return normalizeSnapshot(snapshot);
 }
 
 export async function getSnapshotById(id: string): Promise<Snapshot | null> {
-  return queryOne<Snapshot>('SELECT * FROM snapshots WHERE id = $1', [id]);
+  const row = await queryOne<SnapshotRow>('SELECT * FROM snapshots WHERE id = $1', [id]);
+  return row ? normalizeSnapshot(row) : null;
 }
 
 export async function getSnapshotsBySession(sessionId: string): Promise<Snapshot[]> {
-  return query<Snapshot>(
+  const rows = await query<SnapshotRow>(
     'SELECT * FROM snapshots WHERE session_id = $1 ORDER BY timestamp DESC',
     [sessionId]
   );
+  return rows.map(normalizeSnapshot);
 }
 
 export async function getSnapshotsByBreakpoint(breakpointId: string): Promise<Snapshot[]> {
-  return query<Snapshot>(
+  const rows = await query<SnapshotRow>(
     'SELECT * FROM snapshots WHERE breakpoint_id = $1 ORDER BY timestamp DESC',
     [breakpointId]
   );
+  return rows.map(normalizeSnapshot);
 }
 
 export async function deleteSnapshotsBySession(sessionId: string): Promise<number> {
-  const result = await query<Snapshot>(
+  const result = await query<SnapshotRow>(
     'DELETE FROM snapshots WHERE session_id = $1 RETURNING *',
     [sessionId]
   );
@@ -101,7 +110,7 @@ export async function getSnapshotCount(sessionId: string): Promise<number> {
 }
 
 export async function getSnapshotsByProject(projectId: string): Promise<Snapshot[]> {
-  const result = await query<Snapshot>(
+  const result = await query<SnapshotRow>(
     `SELECT s.* FROM snapshots s
      JOIN sessions sess ON s.session_id = sess.id
      WHERE sess.project_id = $1
@@ -109,5 +118,47 @@ export async function getSnapshotsByProject(projectId: string): Promise<Snapshot
     [projectId]
   );
   
-  return result;
+  return result.map(normalizeSnapshot);
+}
+
+function parseJsonIfString(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return value;
+  if (trimmed[0] !== '{' && trimmed[0] !== '[' && trimmed[0] !== '"') return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function parseDateIfString(value: unknown): Date {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return new Date();
+}
+
+function normalizeSnapshot(row: SnapshotRow): Snapshot {
+  let state = parseJsonIfString(row.state);
+  if (typeof state === 'string') {
+    const twice = parseJsonIfString(state);
+    state = twice;
+  }
+
+  const safeState =
+    state && typeof state === 'object' ? (state as Record<string, unknown>) : { raw: state };
+
+  return {
+    id: row.id,
+    session_id: row.session_id,
+    breakpoint_id: row.breakpoint_id,
+    trigger_reason: row.trigger_reason,
+    state: safeState,
+    timestamp: parseDateIfString(row.timestamp),
+    created_at: parseDateIfString(row.created_at),
+  };
 }

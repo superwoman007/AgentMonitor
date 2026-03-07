@@ -60,7 +60,7 @@ interface CostSuggestion {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 export function CostPage() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, ensureDefaultProject } = useProjectStore();
   const { t } = useTranslation();
   const [summary, setSummary] = useState<CostSummary | null>(null);
   const [trend, setTrend] = useState<CostTrendPoint[]>([]);
@@ -68,34 +68,60 @@ export function CostPage() {
   const [topCalls, setTopCalls] = useState<ExpensiveCall[]>([]);
   const [suggestions, setSuggestions] = useState<CostSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
-    if (currentProject) {
-      fetchData();
-    }
-  }, [currentProject]);
+    ensureDefaultProject().finally(() => setBootstrapped(true));
+  }, [ensureDefaultProject]);
 
-  const fetchData = async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    try {
-      const [summaryRes, byModelRes, topRes, suggestionsRes] = await Promise.all([
-        api.cost.summary(currentProject.id, 7),
-        api.cost.byModel(currentProject.id),
-        api.cost.top(currentProject.id, 10),
-        api.cost.suggestions(currentProject.id),
-      ]);
-      setSummary(summaryRes.summary);
-      setTrend(summaryRes.trend);
-      setByModel(byModelRes.byModel);
-      setTopCalls(topRes.top);
-      setSuggestions(suggestionsRes.suggestions);
-    } catch (error) {
-      console.error('Failed to fetch cost data:', error);
-    } finally {
+  useEffect(() => {
+    if (!bootstrapped) return;
+    if (!currentProject) {
       setLoading(false);
+      return;
     }
-  };
+
+    (async () => {
+      setLoading(true);
+      try {
+        const [summaryRes, byModelRes, topRes, suggestionsRes] = await Promise.allSettled([
+          api.cost.summary(currentProject.id, 7),
+          api.cost.byModel(currentProject.id),
+          api.cost.top(currentProject.id, 10),
+          api.cost.suggestions(currentProject.id),
+        ]);
+
+        if (summaryRes.status === 'fulfilled') {
+          setSummary(summaryRes.value.summary);
+          setTrend(summaryRes.value.trend);
+        } else {
+          console.error('Failed to fetch cost summary:', summaryRes.reason);
+        }
+
+        if (byModelRes.status === 'fulfilled') {
+          setByModel(byModelRes.value.byModel);
+        } else {
+          console.error('Failed to fetch cost by model:', byModelRes.reason);
+        }
+
+        if (topRes.status === 'fulfilled') {
+          setTopCalls(topRes.value.top);
+        } else {
+          console.error('Failed to fetch top expensive calls:', topRes.reason);
+        }
+
+        if (suggestionsRes.status === 'fulfilled') {
+          setSuggestions(suggestionsRes.value.suggestions);
+        } else {
+          console.error('Failed to fetch cost suggestions:', suggestionsRes.reason);
+        }
+      } catch (error) {
+        console.error('Failed to fetch cost data:', error);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [bootstrapped, currentProject?.id]);
 
   const formatCost = (cost: number) => `$${cost.toFixed(4)}`;
 

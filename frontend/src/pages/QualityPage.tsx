@@ -29,34 +29,44 @@ interface QualityTrendPoint {
 }
 
 export function QualityPage() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, ensureDefaultProject } = useProjectStore();
   const { t } = useTranslation();
   const [score, setScore] = useState<QualityScore | null>(null);
   const [trend, setTrend] = useState<QualityTrendPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   useEffect(() => {
-    if (currentProject) {
-      fetchData();
-    }
-  }, [currentProject]);
+    ensureDefaultProject().finally(() => setBootstrapped(true));
+  }, [ensureDefaultProject]);
 
-  const fetchData = async () => {
-    if (!currentProject) return;
-    setLoading(true);
-    try {
-      const [scoreRes, trendRes] = await Promise.all([
-        api.quality.score(currentProject.id),
-        api.quality.trend(currentProject.id, 7),
-      ]);
-      setScore(scoreRes.score);
-      setTrend(trendRes.trend);
-    } catch (error) {
-      console.error('Failed to fetch quality data:', error);
-    } finally {
+  useEffect(() => {
+    if (!bootstrapped) return;
+    if (!currentProject) {
       setLoading(false);
+      return;
     }
-  };
+
+    (async () => {
+      setLoading(true);
+      try {
+        const [scoreRes, trendRes] = await Promise.allSettled([
+          api.quality.score(currentProject.id),
+          api.quality.trend(currentProject.id, 7),
+        ]);
+        if (scoreRes.status === 'fulfilled') {
+          setScore(scoreRes.value.score);
+        }
+        if (trendRes.status === 'fulfilled') {
+          setTrend(trendRes.value.trend);
+        }
+      } catch (error) {
+        console.error('Failed to fetch quality data:', error);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [bootstrapped, currentProject?.id]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600';

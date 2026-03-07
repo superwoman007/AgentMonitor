@@ -7,10 +7,48 @@ import {
   getSnapshotsByProject,
 } from '../services/snapshot.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { apikeyMiddleware } from '../middleware/apikey.js';
 import { getProjectById } from '../services/project.js';
 import { getSessionById } from '../services/session.js';
+import { createSnapshot } from '../services/snapshot.js';
 
 export async function snapshotsRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/', { preHandler: apikeyMiddleware }, async (request, reply) => {
+    if (!request.projectId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = request.body as {
+      sessionId: string;
+      breakpointId?: string;
+      triggerReason: string;
+      state: Record<string, unknown>;
+      timestamp?: string;
+    };
+
+    if (!body.sessionId || !body.triggerReason || !body.state) {
+      reply.code(400).send({ error: 'sessionId, triggerReason, and state are required' });
+      return;
+    }
+
+    const session = await getSessionById(body.sessionId);
+    if (!session || session.project_id !== request.projectId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+
+    const snapshot = await createSnapshot({
+      sessionId: body.sessionId,
+      breakpointId: body.breakpointId,
+      triggerReason: body.triggerReason,
+      state: body.state,
+      timestamp: body.timestamp ? new Date(body.timestamp) : undefined,
+    });
+
+    reply.code(201).send({ snapshot });
+  });
+
   app.get('/', { preHandler: authMiddleware }, async (request, reply) => {
     if (!request.userId) {
       reply.code(401).send({ error: 'Unauthorized' });

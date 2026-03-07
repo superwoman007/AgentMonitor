@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import { api, User } from '../api';
 
 interface AuthState {
@@ -14,6 +14,54 @@ interface AuthState {
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
 }
+
+const storage = (() => {
+  const memory = new Map<string, string>();
+  return {
+    getItem: (key: string) => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return memory.get(key) ?? null;
+      }
+    },
+    setItem: (key: string, value: string) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        memory.set(key, value);
+      }
+    },
+    removeItem: (key: string) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        memory.delete(key);
+      }
+    },
+  };
+})();
+
+type AuthPersisted = { token: string | null; user: User | null };
+
+const persistStorage: PersistStorage<AuthPersisted> = {
+  getItem: (name) => {
+    const str = storage.getItem(name);
+    if (!str) return null;
+    try {
+      return JSON.parse(str) as StorageValue<AuthPersisted>;
+    } catch {
+      storage.removeItem(name);
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    storage.setItem(name, JSON.stringify(value));
+  },
+  removeItem: (name) => {
+    storage.removeItem(name);
+  },
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -60,7 +108,7 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true });
         try {
-          const { user } = await api.auth.me();
+          const user = await api.auth.me();
           set({ user, isLoading: false });
         } catch {
           set({ user: null, token: null, isLoading: false });
@@ -77,6 +125,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      storage: persistStorage,
       partialize: (state) => ({ token: state.token, user: state.user }),
     }
   )

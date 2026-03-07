@@ -25,7 +25,7 @@ export class CustomerServiceAgent {
       sessionId: this.sessionId,
       role: 'user',
       content: userInput,
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
     });
 
     // 意图识别（简单规则）
@@ -37,36 +37,49 @@ export class CustomerServiceAgent {
     try {
       if (intent === 'weather') {
         const city = this.extractCity(userInput);
-        toolCall = await this.monitor.wrap(async () => {
+        const wrapped = this.monitor.wrap(async () => {
           return await checkWeather(city);
         }, { name: 'checkWeather', sessionId: this.sessionId });
+        toolCall = await wrapped();
         
-        response = `好的，已为您查询${city}的天气。${toolCall.result}`;
+        response = `好的，已为您查询${city}的天气。${JSON.stringify(toolCall)}`;
       } else if (intent === 'order') {
-        toolCall = await this.monitor.wrap(async () => {
+        const wrapped = this.monitor.wrap(async () => {
           return await getOrderStatus();
         }, { name: 'getOrderStatus', sessionId: this.sessionId });
+        toolCall = await wrapped();
         
-        response = `您的订单状态：${toolCall.result}`;
+        response = `您的订单状态：${toolCall}`;
       } else if (intent === 'error') {
         // 故意触发错误，展示断点调试
-        toolCall = await this.monitor.wrap(async () => {
+        const wrapped = this.monitor.wrap(async () => {
           throw new Error('故意触发的错误，用于演示断点调试功能');
         }, { name: 'failingTool', sessionId: this.sessionId });
+        toolCall = await wrapped();
         
         response = '抱歉，发生了错误';
       } else if (intent === 'slow') {
         // 慢查询，展示延迟断点
-        toolCall = await this.monitor.wrap(async () => {
+        const wrapped = this.monitor.wrap(async () => {
           return await slowOrderCheck();
         }, { name: 'slowOrderCheck', sessionId: this.sessionId });
+        toolCall = await wrapped();
         
-        response = `您的订单状态（慢查询）：${toolCall.result}`;
+        response = `您的订单状态（慢查询）：${toolCall}`;
       } else {
-        // 普通 LLM 调用
-        response = await this.monitor.wrap(async () => {
-          return await mockLLM(userInput);
-        }, { name: 'llm_response', sessionId: this.sessionId }) as string;
+        const startTime = Date.now();
+        const llmText = await mockLLM(userInput);
+        const latencyMs = Date.now() - startTime;
+        const promptTokens = this.estimateTokens(userInput);
+        const completionTokens = this.estimateTokens(llmText);
+        await this.monitor.traceLLM(
+          'mock-llm',
+          { model: 'mock-llm', prompt: userInput },
+          { usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens } },
+          latencyMs,
+          true
+        );
+        response = llmText;
       }
 
       // 记录助手回复
@@ -74,7 +87,7 @@ export class CustomerServiceAgent {
         sessionId: this.sessionId,
         role: 'assistant',
         content: response,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       });
 
       console.log(`👤 Agent: ${response}`);
@@ -85,10 +98,16 @@ export class CustomerServiceAgent {
         sessionId: this.sessionId,
         role: 'assistant',
         content: `Sorry, something went wrong: ${error}`,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
         metadata: { error: String(error) },
       });
     }
+  }
+
+  private estimateTokens(text: string): number {
+    const normalized = text?.trim() || '';
+    if (!normalized) return 0;
+    return Math.max(1, Math.ceil(normalized.length / 4));
   }
 
   private detectIntent(message: string): string {
@@ -122,6 +141,8 @@ export class CustomerServiceAgent {
   async endSession(): Promise<void> {
     if (this.sessionId) {
       await this.monitor.endSession(this.sessionId);
+      this.monitor.close();
+      this.sessionId = '';
       console.log('✅ Session ended');
     }
   }

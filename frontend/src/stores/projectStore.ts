@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import { api, Project } from '../api';
 
 interface ProjectState {
@@ -14,6 +14,56 @@ interface ProjectState {
   deleteProject: (id: string) => Promise<void>;
   ensureDefaultProject: () => Promise<Project | null>;
 }
+
+const storage = (() => {
+  const memory = new Map<string, string>();
+  return {
+    getItem: (key: string) => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return memory.get(key) ?? null;
+      }
+    },
+    setItem: (key: string, value: string) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        memory.set(key, value);
+      }
+    },
+    removeItem: (key: string) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        memory.delete(key);
+      }
+    },
+  };
+})();
+
+type ProjectPersisted = { currentProjectId?: string };
+
+const persistStorage: PersistStorage<ProjectPersisted> = {
+  getItem: (name) => {
+    const str = storage.getItem(name);
+    if (!str) return null;
+    try {
+      return JSON.parse(str) as StorageValue<ProjectPersisted>;
+    } catch {
+      storage.removeItem(name);
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    storage.setItem(name, JSON.stringify(value));
+  },
+  removeItem: (name) => {
+    storage.removeItem(name);
+  },
+};
+
+let ensureDefaultProjectPromise: Promise<Project | null> | null = null;
 
 export const useProjectStore = create<ProjectState>()(
   persist(
@@ -96,45 +146,63 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       ensureDefaultProject: async () => {
-        const { projects, fetchProjects, createProject, setCurrentProject } = get();
+        const existing = get().currentProject;
+        if (existing) return existing;
 
-        if (projects.length === 0) {
-          await fetchProjects();
-        }
+        if (ensureDefaultProjectPromise) return ensureDefaultProjectPromise;
 
-        const { projects: updatedProjects } = get();
-        if (updatedProjects.length === 0) {
+        ensureDefaultProjectPromise = (async () => {
+          const { projects, fetchProjects, createProject, setCurrentProject } = get();
+
+          if (projects.length === 0) {
+            await fetchProjects();
+          }
+
+          const { projects: updatedProjects } = get();
+
+          if (updatedProjects.length > 0) {
+            const preferred =
+              updatedProjects.find((p) => p.name === 'Default Project') ?? updatedProjects[0];
+            setCurrentProject(preferred);
+            return preferred;
+          }
+
           try {
-            const project = await createProject('Default Project', 'Default project created automatically');
-            setCurrentProject(project);
-            return project;
+            const created = await createProject('Default Project', 'Default project created automatically');
+            setCurrentProject(created);
+            return created;
           } catch {
             return null;
           }
-        }
+        })().finally(() => {
+          ensureDefaultProjectPromise = null;
+        });
 
-        const { currentProject } = get();
-        if (!currentProject && updatedProjects.length > 0) {
-          set({ currentProject: updatedProjects[0] });
-        }
-
-        return get().currentProject;
+        return ensureDefaultProjectPromise;
       },
     }),
     {
       name: 'project-storage',
+      storage: persistStorage,
       partialize: (state) => ({ currentProjectId: state.currentProject?.id }),
       onRehydrateStorage: () => (state) => {
         if (state) {
-          const stored = localStorage.getItem('project-storage');
+          const stored = storage.getItem('project-storage');
           if (stored) {
-            const { state: persisted } = JSON.parse(stored);
-            if (persisted?.currentProjectId) {
-              api.projects.get(persisted.currentProjectId).then(({ project }) => {
-                state.setCurrentProject(project);
-              }).catch(() => {
-                state.setCurrentProject(null);
-              });
+            try {
+              const { state: persisted } = JSON.parse(stored);
+              if (persisted?.currentProjectId) {
+                api.projects
+                  .get(persisted.currentProjectId)
+                  .then(({ project }) => {
+                    state.setCurrentProject(project);
+                  })
+                  .catch(() => {
+                    state.setCurrentProject(null);
+                  });
+              }
+            } catch {
+              state.setCurrentProject(null);
             }
           }
         }

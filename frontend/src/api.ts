@@ -1,15 +1,42 @@
 const API_BASE = '/api/v1';
 
+const storage = (() => {
+  const memory = new Map<string, string>();
+  return {
+    getItem: (key: string) => {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return memory.get(key) ?? null;
+      }
+    },
+    setItem: (key: string, value: string) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        memory.set(key, value);
+      }
+    },
+    removeItem: (key: string) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        memory.delete(key);
+      }
+    },
+  };
+})();
+
 class ApiClient {
   private getToken(): string | null {
-    return localStorage.getItem('token');
+    return storage.getItem('token');
   }
 
   private setToken(token: string | null): void {
     if (token) {
-      localStorage.setItem('token', token);
+      storage.setItem('token', token);
     } else {
-      localStorage.removeItem('token');
+      storage.removeItem('token');
     }
   }
 
@@ -75,7 +102,10 @@ class ApiClient {
         body: JSON.stringify(data),
       }),
 
-    me: () => this.request<{ user: User }>('/auth/me'),
+    me: async () => {
+      const res = await this.request<User | { user: User }>('/auth/me');
+      return 'user' in (res as any) ? (res as any).user : (res as User);
+    },
   };
 
   projects = {
@@ -84,21 +114,34 @@ class ApiClient {
       if (params?.limit) query.set('limit', String(params.limit));
       if (params?.offset) query.set('offset', String(params.offset));
       const qs = query.toString();
-      return this.request<{ projects: Project[] }>(`/projects${qs ? `?${qs}` : ''}`);
+      return this.request<Project[] | { projects: Project[] }>(`/projects${qs ? `?${qs}` : ''}`).then((res) => {
+        if (Array.isArray(res)) return { projects: res };
+        return res;
+      });
     },
 
-    get: (id: string) => this.request<{ project: Project }>(`/projects/${id}`),
+    get: (id: string) =>
+      this.request<Project | { project: Project }>(`/projects/${id}`).then((res) => {
+        if (res && typeof res === 'object' && 'project' in (res as any)) return res as { project: Project };
+        return { project: res as Project };
+      }),
 
     create: (data: { name: string; description?: string }) =>
-      this.request<{ project: Project }>('/projects', {
+      this.request<Project | { project: Project }>('/projects', {
         method: 'POST',
         body: JSON.stringify(data),
+      }).then((res) => {
+        if (res && typeof res === 'object' && 'project' in (res as any)) return res as { project: Project };
+        return { project: res as Project };
       }),
 
     update: (id: string, data: { name?: string; description?: string }) =>
-      this.request<{ project: Project }>(`/projects/${id}`, {
+      this.request<Project | { project: Project }>(`/projects/${id}`, {
         method: 'PUT',
         body: JSON.stringify(data),
+      }).then((res) => {
+        if (res && typeof res === 'object' && 'project' in (res as any)) return res as { project: Project };
+        return { project: res as Project };
       }),
 
     delete: (id: string) =>
@@ -107,19 +150,27 @@ class ApiClient {
 
   apiKeys = {
     list: (projectId: string) =>
-      this.request<{ apiKeys: ApiKey[] }>(`/apikeys?projectId=${projectId}`),
-
-    create: (data: { projectId: string; name: string }) =>
-      this.request<{ apiKey: ApiKey & { plain_key?: string } }>('/apikeys', {
-        method: 'POST',
-        body: JSON.stringify(data),
+      this.request<ApiKey[] | { apiKeys: ApiKey[] }>(`/apikeys?project_id=${projectId}`).then((res) => {
+        if (Array.isArray(res)) return { apiKeys: res };
+        return res;
       }),
 
-    delete: (id: string, projectId: string) =>
-      this.request<void>(`/apikeys/${id}?projectId=${projectId}`, { method: 'DELETE' }),
+    create: (data: { projectId: string; name: string }) =>
+      this.request<(ApiKey & { plain_key?: string }) | { apiKey: ApiKey & { plain_key?: string } }>('/apikeys', {
+        method: 'POST',
+        body: JSON.stringify({ project_id: data.projectId, name: data.name }),
+      }).then((res) => {
+        if (res && typeof res === 'object' && 'apiKey' in (res as any)) return res as { apiKey: ApiKey & { plain_key?: string } };
+        return { apiKey: res as ApiKey & { plain_key?: string } };
+      }),
+
+    delete: (id: string, _projectId?: string) =>
+      this.request<void>(`/apikeys/${id}`, { method: 'DELETE' }),
 
     getSecret: (id: string, projectId: string) =>
-      this.request<{ secret: string }>(`/apikeys/${id}/secret?projectId=${projectId}`),
+      this.request<{ key?: string; secret?: string }>(`/apikeys/${id}/secret?project_id=${projectId}`).then((res) => ({
+        secret: res.secret ?? res.key ?? '',
+      })),
   };
 
   traces = {
@@ -176,6 +227,38 @@ class ApiClient {
       const query = projectId ? `?projectId=${projectId}` : '';
       return this.request<{ stats: Stats }>(`/stats${query}`);
     },
+  };
+
+  alerts = {
+    list: (projectId: string) =>
+      this.request<{ alerts: Alert[]; history: AlertHistory[] }>(`/alerts?projectId=${projectId}`),
+
+    create: (projectId: string, data: { name: string; type: Alert['type']; condition: string; threshold: number; enabled: boolean }) =>
+      this.request<{ alert: Alert }>('/alerts', {
+        method: 'POST',
+        body: JSON.stringify({ projectId, ...data }),
+      }),
+
+    update: (id: string, data: Partial<{ name: string; type: Alert['type']; condition: string; threshold: number; enabled: boolean }>) =>
+      this.request<{ alert: Alert }>(`/alerts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+
+    delete: (id: string) =>
+      this.request<void>(`/alerts/${id}`, { method: 'DELETE' }),
+
+    check: (projectId: string) =>
+      this.request<{ triggered: AlertHistory[] }>('/alerts/check', {
+        method: 'POST',
+        body: JSON.stringify({ projectId }),
+      }),
+
+    ignoreHistory: (historyId: string, minutes: number) =>
+      this.request<{ mutedUntil: string }>(`/alerts/history/${historyId}/ignore`, {
+        method: 'POST',
+        body: JSON.stringify({ minutes }),
+      }),
   };
 
   breakpoints = {
@@ -250,38 +333,6 @@ class ApiClient {
 
     suggestions: (projectId: string) =>
       this.request<{ suggestions: CostSuggestion[] }>(`/cost/suggestions?projectId=${projectId}`),
-  };
-
-  alerts = {
-    list: (projectId: string) =>
-      this.request<{ alerts: Alert[]; history: AlertHistory[] }>(`/alerts?projectId=${projectId}`),
-
-    create: (projectId: string, data: {
-      name: string;
-      type: 'latency' | 'error_rate' | 'cost' | 'custom';
-      condition: string;
-      threshold: number;
-      enabled?: boolean;
-    }) =>
-      this.request<{ alert: Alert }>('/alerts', {
-        method: 'POST',
-        body: JSON.stringify({ projectId, ...data }),
-      }),
-
-    update: (id: string, data: Partial<{
-      name: string;
-      type: 'latency' | 'error_rate' | 'cost' | 'custom';
-      condition: string;
-      threshold: number;
-      enabled: boolean;
-    }>) =>
-      this.request<{ alert: Alert }>(`/alerts/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      }),
-
-    delete: (id: string) =>
-      this.request<void>(`/alerts/${id}`, { method: 'DELETE' }),
   };
 }
 
@@ -474,6 +525,29 @@ export interface AlertHistory {
   id: string;
   alertId: string;
   projectId: string;
+  alertName?: string;
+  alertType?: Alert['type'];
+  threshold?: number;
+  actual?: number | null;
+  metrics?: {
+    avgLatency?: number;
+    errorRate?: number;
+    dailyCost?: number;
+  };
+  condition?: string;
+  fingerprint?: string;
+  ignoredUntil?: string | null;
+  evidenceTrace?: {
+    id: string;
+    sessionId: string | null;
+    traceType: string;
+    name: string;
+    startedAt: string;
+    latencyMs: number | null;
+    status: string;
+    error: string | null;
+    cost?: number | null;
+  };
   message: string;
   triggeredAt: string;
 }

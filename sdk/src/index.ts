@@ -54,6 +54,7 @@ export class AgentMonitor {
   constructor(config: SDKConfig) {
     this.config = {
       baseUrl: 'http://localhost:3000',
+      apiPrefix: '/api/v1',
       disabled: false,
       bufferSize: 100,
       flushInterval: 5000,
@@ -128,11 +129,18 @@ export class AgentMonitor {
     success: boolean = true,
     error?: string
   ): Promise<void> {
+    const metadata: Record<string, unknown> = { model };
+    const usage = (response as unknown as { usage?: unknown } | null)?.usage;
+    if (usage && typeof usage === 'object') {
+      metadata.usage = usage;
+    }
+
     const trace: TraceData = {
       traceType: 'llm',
       name: model,
       input: request,
       output: response,
+      metadata,
       latencyMs,
       status: success ? 'success' : 'error',
       error,
@@ -293,12 +301,12 @@ export class AgentMonitor {
       const projectId = this.getProjectId();
       if (!projectId) return;
 
-      const response = await fetch(
-        `${this.config.baseUrl}/api/v1/breakpoints?projectId=${projectId}`,
-        {
-          headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
-        }
-      );
+      const response = await this.fetchApi(`/breakpoints/public`, {
+        headers: {
+          'X-API-Key': this.config.apiKey,
+          'Authorization': `Bearer ${this.config.apiKey}`,
+        },
+      }, false);
 
       if (response.ok) {
         const data = await response.json() as { breakpoints: Breakpoint[] };
@@ -365,10 +373,11 @@ export class AgentMonitor {
       let snapshotId: string | undefined;
 
       for (const breakpoint of triggered) {
-        const snapshotResponse = await fetch(`${this.config.baseUrl}/api/v1/snapshots`, {
+        const snapshotResponse = await this.fetchApi('/snapshots', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-API-Key': this.config.apiKey,
             'Authorization': `Bearer ${this.config.apiKey}`,
           },
           body: JSON.stringify({
@@ -377,7 +386,7 @@ export class AgentMonitor {
             triggerReason: `Breakpoint "${breakpoint.name}" triggered`,
             state,
           }),
-        });
+        }, false);
 
         if (snapshotResponse.ok) {
           const { snapshot } = await snapshotResponse.json() as { snapshot: { id: string } };
@@ -486,12 +495,38 @@ export class AgentMonitor {
     }
   }
 
+  private buildApiUrl(prefix: string, path: string): string {
+    const normalizedPrefix = prefix.startsWith('/') ? prefix : `/${prefix}`;
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${this.config.baseUrl}${normalizedPrefix}${normalizedPath}`;
+  }
+
+  private async fetchApi(path: string, init: RequestInit, allowFallback: boolean = true): Promise<Response> {
+    const firstUrl = this.buildApiUrl(this.config.apiPrefix, path);
+    const firstResponse = await fetch(firstUrl, init);
+
+    if (!allowFallback) return firstResponse;
+
+    if (firstResponse.status === 404 && this.config.apiPrefix === '/api/v1') {
+      const fallbackPrefix = '/api';
+      const fallbackUrl = this.buildApiUrl(fallbackPrefix, path);
+      const fallbackResponse = await fetch(fallbackUrl, init);
+      if (fallbackResponse.status !== 404) {
+        this.config.apiPrefix = fallbackPrefix;
+      }
+      return fallbackResponse;
+    }
+
+    return firstResponse;
+  }
+
   private async sendTrace(trace: TraceData): Promise<void> {
     try {
-      const response = await fetch(`${this.config.baseUrl}/api/v1/traces`, {
+      const response = await this.fetchApi('/traces', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': this.config.apiKey,
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(trace),
@@ -523,10 +558,11 @@ export class AgentMonitor {
     state: SnapshotState;
   }): Promise<void> {
     try {
-      await fetch(`${this.config.baseUrl}/api/v1/snapshots`, {
+      await this.fetchApi('/snapshots', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': this.config.apiKey,
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(data),

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { i18n, Lang, TranslationKey } from './i18n';
 import { useAuthStore } from './stores/authStore';
+import { useProjectStore } from './stores/projectStore';
 
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -33,12 +34,20 @@ export function useTranslation() {
 
 function TranslationProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => {
-    const stored = localStorage.getItem('lang');
-    return (stored === 'en' || stored === 'zh') ? stored : 'zh';
+    try {
+      const stored = localStorage.getItem('lang');
+      return stored === 'en' || stored === 'zh' ? stored : 'zh';
+    } catch {
+      return 'zh';
+    }
   });
 
   useEffect(() => {
-    localStorage.setItem('lang', lang);
+    try {
+      localStorage.setItem('lang', lang);
+    } catch {
+      return;
+    }
   }, [lang]);
 
   const t = i18n[lang];
@@ -52,12 +61,19 @@ function TranslationProvider({ children }: { children: ReactNode }) {
 
 function AppRoutes() {
   const { token, user, fetchUser } = useAuthStore();
+  const { ensureDefaultProject } = useProjectStore();
 
   useEffect(() => {
     if (token && !user) {
       fetchUser();
     }
   }, [token, user, fetchUser]);
+
+  useEffect(() => {
+    if (token) {
+      ensureDefaultProject();
+    }
+  }, [token, ensureDefaultProject]);
 
   return (
     <Routes>

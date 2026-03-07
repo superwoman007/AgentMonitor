@@ -2,10 +2,11 @@ import { FastifyInstance } from 'fastify';
 import { createTrace, getTracesByProject, getTraceById, updateTrace } from '../services/trace.js';
 import { checkBreakpoints } from '../services/breakpoint.js';
 import { createSnapshot } from '../services/snapshot.js';
-import { getMessagesBySession } from '../services/session.js';
+import { addMessage, createSession, getMessagesBySession, getSessionById } from '../services/session.js';
 import { apikeyMiddleware } from '../middleware/apikey.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getProjectById } from '../services/project.js';
+import { broadcastToProject } from './ws.js';
 
 export async function tracesRoutes(app: FastifyInstance): Promise<void> {
   app.post('/', { preHandler: apikeyMiddleware }, async (request, reply) => {
@@ -33,6 +34,16 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
       reply.code(400).send({ error: 'traceType and name are required' });
       return;
     }
+
+    if (body.sessionId) {
+      const session = await getSessionById(body.sessionId);
+      if (!session) {
+        await createSession(request.projectId, body.sessionId, body.metadata);
+      } else if (session.project_id !== request.projectId) {
+        reply.code(404).send({ error: 'Session not found' });
+        return;
+      }
+    }
     
     const trace = await createTrace({
       projectId: request.projectId,
@@ -51,6 +62,28 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     });
     
     app.log.info({ traceId: trace.id, projectId: request.projectId }, 'Trace created');
+
+    broadcastToProject(request.projectId, { type: 'new_trace', data: trace });
+
+    if (body.traceType === 'message' && body.sessionId) {
+      const input = body.input as { role?: string } | undefined;
+      const output = body.output as { content?: string } | undefined;
+      const role = input?.role;
+      const content = output?.content;
+      if (role && content) {
+        try {
+          await addMessage(
+            body.sessionId,
+            role,
+            content,
+            body.startedAt || new Date().toISOString(),
+            body.metadata
+          );
+        } catch (error) {
+          app.log.warn({ error, traceId: trace.id }, 'Failed to add message from trace');
+        }
+      }
+    }
     
     try {
       const triggeredBreakpoints = await checkBreakpoints(request.projectId, {

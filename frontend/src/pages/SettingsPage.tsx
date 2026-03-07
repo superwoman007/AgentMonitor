@@ -5,10 +5,11 @@ import { api, ApiKey, Project } from '../api';
 import { useTranslation } from '../App';
 
 export function SettingsPage() {
-  const { projects, currentProject, fetchProjects, createProject, updateProject, deleteProject, setCurrentProject } = useProjectStore();
+  const { projects, currentProject, ensureDefaultProject, createProject, updateProject, deleteProject, setCurrentProject } = useProjectStore();
   const { t } = useTranslation();
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
@@ -22,8 +23,8 @@ export function SettingsPage() {
   const [loadingReveal, setLoadingReveal] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    ensureDefaultProject().finally(() => setBootstrapped(true));
+  }, [ensureDefaultProject]);
 
   useEffect(() => {
     if (currentProject) {
@@ -34,6 +35,12 @@ export function SettingsPage() {
         .finally(() => setIsLoading(false));
     }
   }, [currentProject]);
+
+  useEffect(() => {
+    if (bootstrapped && !currentProject) {
+      setIsLoading(false);
+    }
+  }, [bootstrapped, currentProject]);
 
   const handleCreateKey = async () => {
     if (!currentProject || !newKeyName.trim()) return;

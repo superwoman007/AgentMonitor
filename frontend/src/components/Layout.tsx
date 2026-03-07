@@ -5,7 +5,6 @@ import { useProjectStore } from '../stores/projectStore';
 import { Sidebar } from './Sidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { LanguageToggle } from './LanguageToggle';
-import { ConnectionStatus } from './ConnectionStatus';
 import { useTranslation } from '../App';
 
 interface LayoutProps {
@@ -42,7 +41,6 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-3">
-              <ConnectionStatus />
               <LanguageToggle lang={lang} setLang={setLang} />
               {user && (
                 <button
