@@ -1,6 +1,7 @@
 import React from 'react';
 import { Decision } from '../../types/decision';
 import './DecisionDetailModal.css';
+import { useTranslation } from '../../App';
 
 interface DecisionDetailModalProps {
   decision: Decision;
@@ -11,18 +12,35 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
   decision,
   onClose,
 }) => {
+  const { t, lang } = useTranslation();
+
   const getDecisionMakerIcon = (maker: string) => {
     switch (maker) {
       case 'rule':
-        return '📋';
+        return '规';
       case 'llm':
-        return '🤖';
+        return '模';
       case 'human':
-        return '👤';
+        return '人';
       case 'hybrid':
-        return '⚡';
+        return '混';
       default:
-        return '❓';
+        return '?';
+    }
+  };
+
+  const getDecisionMakerLabel = (maker: string) => {
+    switch (maker) {
+      case 'rule':
+        return t.decisionMakerRule;
+      case 'llm':
+        return t.decisionMakerLLM;
+      case 'human':
+        return t.decisionMakerHuman;
+      case 'hybrid':
+        return t.decisionMakerHybrid;
+      default:
+        return t.decisionMakerUnknown;
     }
   };
 
@@ -35,57 +53,51 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+    const locale = lang === 'zh' ? 'zh-CN' : 'en-US';
+    return date.toLocaleString(locale);
   };
 
   const formatLatency = (latencyMs: number | null) => {
     if (latencyMs === null) return '-';
-    if (latencyMs < 1000) return `${latencyMs}ms`;
-    return `${(latencyMs / 1000).toFixed(2)}s`;
+    if (latencyMs < 1000) return lang === 'zh' ? `${latencyMs}毫秒` : `${latencyMs}ms`;
+    return lang === 'zh' ? `${(latencyMs / 1000).toFixed(2)}秒` : `${(latencyMs / 1000).toFixed(2)}s`;
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Decision Details</h2>
+          <h2>{t.decisionDetails}</h2>
           <button className="close-button" onClick={onClose}>
-            ✕
+            x
           </button>
         </div>
 
         <div className="modal-body">
           <div className="decision-overview">
             <div className="overview-item">
-              <span className="label">Type:</span>
+              <span className="label">{t.typeLabel}:</span>
               <span className="value type-badge">{decision.decision_type}</span>
             </div>
             <div className="overview-item">
-              <span className="label">Maker:</span>
+              <span className="label">{t.makerLabel}:</span>
               <span className="value maker-badge">
-                {getDecisionMakerIcon(decision.decision_maker)} {decision.decision_maker}
+                {getDecisionMakerIcon(decision.decision_maker)} {getDecisionMakerLabel(decision.decision_maker)}
               </span>
             </div>
             <div className="overview-item">
-              <span className="label">Time:</span>
+              <span className="label">{t.timeLabel}:</span>
               <span className="value">{formatTimestamp(decision.created_at)}</span>
             </div>
             <div className="overview-item">
-              <span className="label">Latency:</span>
+              <span className="label">{t.latencyLabel}:</span>
               <span className="value">{formatLatency(decision.latency_ms)}</span>
             </div>
           </div>
 
           {decision.confidence !== null && (
             <div className="confidence-section">
-              <h3>Confidence</h3>
+              <h3>{t.confidenceLabel}</h3>
               <div className={`confidence-bar ${getConfidenceColor(decision.confidence)}`}>
                 <div
                   className="confidence-fill"
@@ -99,7 +111,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
           )}
 
           <div className="selected-option-section">
-            <h3>Selected Option</h3>
+            <h3>{t.selectedOptionTitle}</h3>
             <div className="selected-option-card">
               <span className="option-name">{decision.selected_option}</span>
             </div>
@@ -107,7 +119,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
           {decision.reasoning && (
             <div className="reasoning-section">
-              <h3>Reasoning</h3>
+              <h3>{t.reasoningTitle}</h3>
               <div className="reasoning-content">
                 <p>{decision.reasoning}</p>
               </div>
@@ -116,7 +128,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
           {decision.options.length > 0 && (
             <div className="options-section">
-              <h3>All Options ({decision.options.length})</h3>
+              <h3>{t.allOptionsTitle} ({decision.options.length})</h3>
               <div className="options-list">
                 {decision.options.map((option) => (
                   <div
@@ -129,14 +141,14 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
                       <span className="option-name">{option.option_name}</span>
                       {option.score !== null && (
                         <span className="option-score">
-                          Score: {(option.score * 100).toFixed(1)}%
+                          {t.scoreLabel}: {(option.score * 100).toFixed(1)}%
                         </span>
                       )}
                     </div>
 
                     {option.pros && option.pros.length > 0 && (
                       <div className="option-pros">
-                        <span className="label">Pros:</span>
+                        <span className="label">{t.prosLabel}:</span>
                         <ul>
                           {option.pros.map((pro, idx) => (
                             <li key={idx}>{pro}</li>
@@ -147,7 +159,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
                     {option.cons && option.cons.length > 0 && (
                       <div className="option-cons">
-                        <span className="label">Cons:</span>
+                        <span className="label">{t.consLabel}:</span>
                         <ul>
                           {option.cons.map((con, idx) => (
                             <li key={idx}>{con}</li>
@@ -163,7 +175,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
           {decision.context && Object.keys(decision.context).length > 0 && (
             <div className="context-section">
-              <h3>Context</h3>
+              <h3>{t.contextTitle}</h3>
               <pre className="context-json">
                 {JSON.stringify(decision.context, null, 2)}
               </pre>
@@ -172,7 +184,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 
           {decision.metadata && Object.keys(decision.metadata).length > 0 && (
             <div className="metadata-section">
-              <h3>Metadata</h3>
+              <h3>{t.metadataTitle}</h3>
               <pre className="metadata-json">
                 {JSON.stringify(decision.metadata, null, 2)}
               </pre>

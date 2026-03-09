@@ -48,6 +48,11 @@ async function main() {
   await agent.handleUserMessage('我想了解一下你们的服务介绍');
   console.log('');
 
+  // 演示 6: 决策监控（展示决策上报）
+  console.log('=== Demo 6: 决策监控演示 ===');
+  await agent.handleUserMessage('针对VIP客户的退款方案是什么？');
+  console.log('');
+
   await agent.endSession();
   console.log('');
 

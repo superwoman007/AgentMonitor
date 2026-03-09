@@ -1,4 +1,6 @@
-import { query, queryOne } from '../db/index.js';
+import { query, queryOne, run } from '../db/index.js';
+import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config.js';
 
 export interface Decision {
   id: string;
@@ -60,31 +62,31 @@ export interface DecisionStats {
 }
 
 export async function createDecision(data: DecisionCreateData): Promise<DecisionWithOptions> {
-  const decision = await queryOne<Decision>(
+  const decisionId = `decision_${uuidv4()}`;
+
+  await run(
     `INSERT INTO decisions (
-      project_id, session_id, decision_type, context, selected_option,
+      id, project_id, session_id, decision_type, context, selected_option,
       confidence, reasoning, decision_maker, latency_ms, metadata
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-    RETURNING *`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
+      decisionId,
       data.projectId,
       data.sessionId || null,
       data.decisionType,
       data.context ? JSON.stringify(data.context) : null,
       data.selectedOption,
-      data.confidence || null,
-      data.reasoning || null,
+      data.confidence ?? null,
+      data.reasoning ?? null,
       data.decisionMaker,
-      data.latencyMs || null,
+      data.latencyMs ?? null,
       data.metadata ? JSON.stringify(data.metadata) : null,
     ]
   );
 
-  if (!decision) {
-    throw new Error('Failed to create decision');
-  }
+  const decision = await queryOne<Decision>('SELECT * FROM decisions WHERE id = $1', [decisionId]);
+  if (!decision) throw new Error('Failed to create decision');
 
-  // Parse JSON fields
   const parsedDecision: Decision = {
     ...decision,
     context: decision.context ? JSON.parse(decision.context as unknown as string) : null,
@@ -95,29 +97,32 @@ export async function createDecision(data: DecisionCreateData): Promise<Decision
   const options: DecisionOption[] = [];
   if (data.options && data.options.length > 0) {
     for (const opt of data.options) {
-      const option = await queryOne<DecisionOption>(
+      const optionId = `option_${uuidv4()}`;
+
+      await run(
         `INSERT INTO decision_options (
-          decision_id, option_name, score, pros, cons, metadata
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *`,
+          id, decision_id, option_name, score, pros, cons, metadata
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
+          optionId,
           parsedDecision.id,
           opt.name,
-          opt.score || null,
+          opt.score ?? null,
           opt.pros ? JSON.stringify(opt.pros) : null,
           opt.cons ? JSON.stringify(opt.cons) : null,
           opt.metadata ? JSON.stringify(opt.metadata) : null,
         ]
       );
 
-      if (option) {
-        options.push({
-          ...option,
-          pros: option.pros ? JSON.parse(option.pros as unknown as string) : null,
-          cons: option.cons ? JSON.parse(option.cons as unknown as string) : null,
-          metadata: option.metadata ? JSON.parse(option.metadata as unknown as string) : null,
-        });
-      }
+      const option = await queryOne<DecisionOption>('SELECT * FROM decision_options WHERE id = $1', [optionId]);
+      if (!option) continue;
+
+      options.push({
+        ...option,
+        pros: option.pros ? JSON.parse(option.pros as unknown as string) : null,
+        cons: option.cons ? JSON.parse(option.cons as unknown as string) : null,
+        metadata: option.metadata ? JSON.parse(option.metadata as unknown as string) : null,
+      });
     }
   }
 
@@ -229,57 +234,61 @@ export async function getDecisionStats(projectId: string): Promise<DecisionStats
     makerStats,
     recentCount,
   ] = await Promise.all([
-    queryOne<{ count: string }>(
+    queryOne<{ count: string | number }>(
       'SELECT COUNT(*) as count FROM decisions WHERE project_id = $1',
       [projectId]
     ),
-    queryOne<{ avg: string | null }>(
-      'SELECT AVG(confidence)::text as avg FROM decisions WHERE project_id = $1 AND confidence IS NOT NULL',
+    queryOne<{ avg: string | number | null }>(
+      'SELECT AVG(confidence) as avg FROM decisions WHERE project_id = $1 AND confidence IS NOT NULL',
       [projectId]
     ),
-    queryOne<{ avg: string | null }>(
-      'SELECT AVG(latency_ms)::text as avg FROM decisions WHERE project_id = $1 AND latency_ms IS NOT NULL',
+    queryOne<{ avg: string | number | null }>(
+      'SELECT AVG(latency_ms) as avg FROM decisions WHERE project_id = $1 AND latency_ms IS NOT NULL',
       [projectId]
     ),
-    query<{ decision_type: string; count: string }>(
-      `SELECT decision_type, COUNT(*)::text as count 
+    query<{ decision_type: string; count: string | number }>(
+      `SELECT decision_type, COUNT(*) as count 
        FROM decisions WHERE project_id = $1 
        GROUP BY decision_type`,
       [projectId]
     ),
-    query<{ decision_maker: string; count: string }>(
-      `SELECT decision_maker, COUNT(*)::text as count 
+    query<{ decision_maker: string; count: string | number }>(
+      `SELECT decision_maker, COUNT(*) as count 
        FROM decisions WHERE project_id = $1 
        GROUP BY decision_maker`,
       [projectId]
     ),
-    queryOne<{ count: string }>(
+    queryOne<{ count: string | number }>(
       `SELECT COUNT(*) as count FROM decisions 
-       WHERE project_id = $1 AND created_at > datetime('now', '-24 hours')`,
+       WHERE project_id = $1 AND created_at > ${
+         config.dbType === 'sqlite'
+           ? "datetime('now', '-24 hours')"
+           : "NOW() - INTERVAL '24 hours'"
+       }`,
       [projectId]
     ),
   ]);
 
   const decisionsByType: Record<string, number> = {};
   for (const row of typeStats) {
-    decisionsByType[row.decision_type] = parseInt(row.count, 10);
+    decisionsByType[row.decision_type] = Number(row.count ?? 0);
   }
 
   const decisionsByMaker: Record<string, number> = {};
   for (const row of makerStats) {
-    decisionsByMaker[row.decision_maker] = parseInt(row.count, 10);
+    decisionsByMaker[row.decision_maker] = Number(row.count ?? 0);
   }
 
   return {
-    totalDecisions: parseInt(totalCount?.count || '0', 10),
-    avgConfidence: avgConf?.avg ? parseFloat(avgConf.avg) : 0,
-    avgLatencyMs: avgLat?.avg ? parseFloat(avgLat.avg) : 0,
+    totalDecisions: Number(totalCount?.count ?? 0),
+    avgConfidence: avgConf?.avg == null ? 0 : Number(avgConf.avg),
+    avgLatencyMs: avgLat?.avg == null ? 0 : Number(avgLat.avg),
     decisionsByType,
     decisionsByMaker,
-    recentDecisions: parseInt(recentCount?.count || '0', 10),
+    recentDecisions: Number(recentCount?.count ?? 0),
   };
 }
 
 export async function deleteDecision(id: string): Promise<void> {
-  await query('DELETE FROM decisions WHERE id = $1', [id]);
+  await run('DELETE FROM decisions WHERE id = $1', [id]);
 }

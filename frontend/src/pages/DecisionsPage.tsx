@@ -1,36 +1,43 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from '../App';
 import { useProjectStore } from '../stores/projectStore';
 import { DecisionMonitor } from '../components/decisions/DecisionMonitor';
+import { Layout } from '../components/Layout';
 
 export const DecisionsPage: React.FC = () => {
   const { t } = useTranslation();
-  const { currentProject } = useProjectStore();
+  const { currentProject, ensureDefaultProject } = useProjectStore();
+
+  useEffect(() => {
+    ensureDefaultProject();
+  }, [ensureDefaultProject]);
 
   if (!currentProject) {
     return (
-      <div className="page-container">
-        <div className="empty-state">
-          <p>Please select a project</p>
+      <Layout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-gray-500">{t.pleaseSelectProject}</div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="page-container">
-      <div className="page-header">
-        <h1>{t.decisions}</h1>
-        <p className="page-description">
-          {t.decisionsDesc}
-        </p>
-      </div>
+    <Layout>
+      <div className="p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">{t.decisions}</h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {t.decisionsDesc}
+          </p>
+        </div>
 
-      <DecisionMonitor
-        projectId={currentProject.id}
-        refreshInterval={5000}
-      />
-    </div>
+        <DecisionMonitor
+          projectId={currentProject.id}
+          refreshInterval={5000}
+        />
+      </div>
+    </Layout>
   );
 };
 

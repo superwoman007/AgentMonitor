@@ -66,6 +66,25 @@ export class CustomerServiceAgent {
         toolCall = await wrapped();
         
         response = `您的订单状态（慢查询）：${toolCall}`;
+      } else if (intent === 'decision') {
+        const decisionData = {
+          projectId: 'auto',
+          sessionId: this.sessionId,
+          decisionType: 'refund_strategy',
+          selectedOption: 'full_refund',
+          confidence: 0.95,
+          reasoning: '用户为VIP且投诉理由合理，符合全额退款策略',
+          decisionMaker: 'rule',
+          latencyMs: 50,
+          options: [
+            { name: 'full_refund', score: 0.95, pros: ['用户满意度高', '符合VIP政策'], cons: ['成本高'] },
+            { name: 'partial_refund', score: 0.60, pros: ['成本可控'], cons: ['用户可能流失'] },
+            { name: 'reject', score: 0.10, pros: ['无直接成本'], cons: ['极高投诉风险'] }
+          ]
+        };
+        
+        await this.monitor.trackDecision(decisionData);
+        response = `已根据规则做出决策：全额退款 (置信度 95%)`;
       } else {
         const startTime = Date.now();
         const llmText = await mockLLM(userInput);
@@ -123,6 +142,9 @@ export class CustomerServiceAgent {
     }
     if (lower.includes('错误') || lower.includes('error') || lower.includes('触发')) {
       return 'error';
+    }
+    if (lower.includes('决策') || lower.includes('decision') || lower.includes('方案')) {
+      return 'decision';
     }
     return 'chat';
   }

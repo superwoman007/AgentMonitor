@@ -10,9 +10,10 @@
   ],
   "scripts": {
     "build": "tsc",
-    "dev": "tsc -w",
+    "dev": "tsx watch src/index.ts",
+    "demo": "tsx test-demo.ts",
     "test": "vitest",
-    "lint": "eslint ."
+    "dataset": "tsx test-dataset.ts"
   },
   "keywords": [
     "ai",
@@ -29,12 +30,6 @@
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vitest": "^2.0.0"
-  },
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/index.ts",
-    "demo": "tsx test-demo.ts",
-    "test": "vitest"
   },
   "dependencies": {}
 }

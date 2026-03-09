@@ -23,6 +23,26 @@ export OPENAI_API_KEY="sk-..."
 npx tsx demo-openai.ts
 ```
 
+### TypeScript 测试集脚本（覆盖 session/message/tool_call/llm/decision）
+
+```bash
+cd sdk
+
+# 1. 安装依赖
+npm install
+
+# 2. 配置 API Key
+export AGENTMONITOR_API_KEY="your_project_id_your_api_key"
+
+# 3. 运行测试集生成脚本（默认每类 20 条）
+npm run dataset
+
+# 可选：自定义条数与项目 ID
+export AGENTMONITOR_TEST_COUNT=30
+export AGENTMONITOR_PROJECT_ID="your_project_id"
+npm run dataset
+```
+
 ### Python Demo
 
 ```bash

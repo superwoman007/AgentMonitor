@@ -289,7 +289,7 @@ export class AgentMonitor {
 
     // 异步上报决策数据到决策监控API
     try {
-      await fetch(`${this.config.baseUrl}/api/v1/decisions`, {
+      const response = await fetch(`${this.config.baseUrl}/api/v1/decisions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,9 +297,17 @@ export class AgentMonitor {
         },
         body: JSON.stringify(data),
       });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error(`[AgentMonitor] Decision report failed: ${response.status} ${text}`);
+      }
     } catch (error) {
       // 静默失败，不影响主业务流程
-      console.warn('[AgentMonitor] Failed to report decision:', error);
+      console.error('[AgentMonitor] Failed to report decision:', error);
+      if (error instanceof Error) {
+        console.error('Stack:', error.stack);
+      }
     }
   }
 

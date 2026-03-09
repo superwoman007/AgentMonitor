@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Decision, DecisionStats } from '../../types/decision';
 import { DecisionTimeline } from './DecisionTimeline';
 import { DecisionStatsCard } from './DecisionStatsCard';
 import { DecisionDetailModal } from './DecisionDetailModal';
 import { useApi } from '../../hooks/useApi';
+import { useTranslation } from '../../App';
 
 interface DecisionMonitorProps {
   projectId: string;
@@ -16,13 +17,26 @@ export const DecisionMonitor: React.FC<DecisionMonitorProps> = ({
   sessionId,
   refreshInterval = 5000,
 }) => {
+  const { t } = useTranslation();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [stats, setStats] = useState<DecisionStats | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [enableEnterAnimation, setEnableEnterAnimation] = useState(true);
 
   const { fetchApi } = useApi();
+  const pollingRef = useRef<{ stopped: boolean; inFlight: boolean }>({ stopped: false, inFlight: false });
+
+  const isSameDecisions = useCallback((prev: Decision[], next: Decision[]) => {
+    if (prev === next) return true;
+    if (prev.length !== next.length) return false;
+    for (let i = 0; i < prev.length; i++) {
+      if (prev[i].id !== next[i].id) return false;
+      if (prev[i].created_at !== next[i].created_at) return false;
+    }
+    return true;
+  }, []);
 
   const fetchDecisions = useCallback(async () => {
     try {
@@ -31,45 +45,65 @@ export const DecisionMonitor: React.FC<DecisionMonitorProps> = ({
         : `/api/v1/projects/${projectId}/decisions?limit=100`;
       
       const data = await fetchApi(url);
-      setDecisions(data);
+      setDecisions((prev) => (Array.isArray(data) && isSameDecisions(prev, data) ? prev : data));
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch decisions');
+      setError(err instanceof Error ? err.message : t.fetchDecisionsFailed);
     }
-  }, [projectId, sessionId, fetchApi]);
+  }, [projectId, sessionId, fetchApi, isSameDecisions, t.fetchDecisionsFailed]);
 
   const fetchStats = useCallback(async () => {
     try {
       const data = await fetchApi(`/api/v1/projects/${projectId}/decisions/stats`);
       setStats(data);
     } catch (err) {
-      console.error('Failed to fetch decision stats:', err);
+      return;
     }
   }, [projectId, fetchApi]);
 
   useEffect(() => {
-    const loadData = async () => {
+    pollingRef.current.stopped = false;
+    pollingRef.current.inFlight = false;
+
+    const loadOnce = async () => {
       setLoading(true);
-      await Promise.all([fetchDecisions(), fetchStats()]);
-      setLoading(false);
+      try {
+        await Promise.all([fetchDecisions(), fetchStats()]);
+      } finally {
+        setLoading(false);
+        setEnableEnterAnimation(false);
+      }
     };
 
-    loadData();
+    const loop = async () => {
+      if (pollingRef.current.stopped) return;
+      if (pollingRef.current.inFlight) return;
 
-    // Set up auto-refresh
-    const interval = setInterval(() => {
-      fetchDecisions();
-      fetchStats();
-    }, refreshInterval);
+      pollingRef.current.inFlight = true;
+      try {
+        await Promise.all([fetchDecisions(), fetchStats()]);
+      } finally {
+        pollingRef.current.inFlight = false;
+      }
 
-    return () => clearInterval(interval);
+      if (pollingRef.current.stopped) return;
+      window.setTimeout(loop, refreshInterval);
+    };
+
+    loadOnce().then(() => {
+      window.setTimeout(loop, refreshInterval);
+    });
+
+    return () => {
+      pollingRef.current.stopped = true;
+    };
   }, [fetchDecisions, fetchStats, refreshInterval]);
 
-  if (loading) {
+  if (loading && decisions.length === 0) {
     return (
       <div className="decision-monitor loading">
         <div className="spinner" />
-        <p>Loading decisions...</p>
+        <p>{t.loadingDecisions}</p>
       </div>
     );
   }
@@ -77,9 +111,9 @@ export const DecisionMonitor: React.FC<DecisionMonitorProps> = ({
   if (error) {
     return (
       <div className="decision-monitor error">
-        <div className="error-icon">⚠️</div>
+        <div className="error-icon">!</div>
         <p>{error}</p>
-        <button onClick={fetchDecisions}>Retry</button>
+        <button onClick={fetchDecisions}>{t.retry}</button>
       </div>
     );
   }
@@ -87,19 +121,20 @@ export const DecisionMonitor: React.FC<DecisionMonitorProps> = ({
   return (
     <div className="decision-monitor">
       <div className="monitor-header">
-        <h2>Decision Monitor</h2>
+        <h2>{t.decisions}</h2>
         <div className="refresh-info">
-          Auto-refresh: {refreshInterval / 1000}s
+          {t.autoRefresh}: {refreshInterval / 1000}s
         </div>
       </div>
 
       {stats && <DecisionStatsCard stats={stats} />}
 
       <div className="decisions-section">
-        <h3>Recent Decisions ({decisions.length})</h3>
+        <h3>{t.recentDecisions} ({decisions.length})</h3>
         <DecisionTimeline
           decisions={decisions}
           onDecisionClick={setSelectedDecision}
+          enableEnterAnimation={enableEnterAnimation}
         />
       </div>
 
