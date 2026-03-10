@@ -16,21 +16,6 @@ export const DecisionTimeline: React.FC<DecisionTimelineProps> = ({
 }) => {
   const { t, lang } = useTranslation();
 
-  const getDecisionMakerIcon = (maker: string) => {
-    switch (maker) {
-      case 'rule':
-        return '规';
-      case 'llm':
-        return '模';
-      case 'human':
-        return '人';
-      case 'hybrid':
-        return '混';
-      default:
-        return '?';
-    }
-  };
-
   const getDecisionMakerLabel = (maker: string) => {
     switch (maker) {
       case 'rule':
@@ -88,11 +73,6 @@ export const DecisionTimeline: React.FC<DecisionTimelineProps> = ({
           onClick={() => onDecisionClick?.(decision)}
           style={enableEnterAnimation ? { animationDelay: `${index * 0.05}s` } : undefined}
         >
-          <div className="decision-marker">
-            <span className="decision-icon">{getDecisionMakerIcon(decision.decision_maker)}</span>
-            <div className="timeline-line" />
-          </div>
-
           <div className="decision-content">
             <div className="decision-header">
               <div className="decision-type">{decision.decision_type}</div>
@@ -107,15 +87,17 @@ export const DecisionTimeline: React.FC<DecisionTimelineProps> = ({
 
               {decision.confidence !== null && (
                 <div className={`confidence-badge ${getConfidenceColor(decision.confidence)}`}>
-                  {t.confidenceLabel}: {(decision.confidence * 100).toFixed(1)}%
+                  {(decision.confidence * 100).toFixed(0)}%
                 </div>
               )}
             </div>
 
             <div className="decision-footer">
-              <span className="decision-maker">{getDecisionMakerLabel(decision.decision_maker)}</span>
+              <span className="decision-maker">
+                {getDecisionMakerLabel(decision.decision_maker)}
+              </span>
               {decision.latency_ms !== null && (
-                <span className="latency">{t.latencyLabel}: {formatLatency(decision.latency_ms)}</span>
+                <span className="latency">{formatLatency(decision.latency_ms)}</span>
               )}
               {decision.options.length > 0 && (
                 <span className="options-count">{decision.options.length} {t.optionsUnit}</span>

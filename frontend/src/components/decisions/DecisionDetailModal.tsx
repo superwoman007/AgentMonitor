@@ -14,21 +14,6 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
 }) => {
   const { t, lang } = useTranslation();
 
-  const getDecisionMakerIcon = (maker: string) => {
-    switch (maker) {
-      case 'rule':
-        return '规';
-      case 'llm':
-        return '模';
-      case 'human':
-        return '人';
-      case 'hybrid':
-        return '混';
-      default:
-        return '?';
-    }
-  };
-
   const getDecisionMakerLabel = (maker: string) => {
     switch (maker) {
       case 'rule':
@@ -82,7 +67,7 @@ export const DecisionDetailModal: React.FC<DecisionDetailModalProps> = ({
             <div className="overview-item">
               <span className="label">{t.makerLabel}:</span>
               <span className="value maker-badge">
-                {getDecisionMakerIcon(decision.decision_maker)} {getDecisionMakerLabel(decision.decision_maker)}
+                {getDecisionMakerLabel(decision.decision_maker)}
               </span>
             </div>
             <div className="overview-item">
