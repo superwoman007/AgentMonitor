@@ -1,34 +1,52 @@
+# ========================
 # Dependencies
+# ========================
 node_modules/
 package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
+# ========================
 # Build outputs
+# ========================
 dist/
 build/
 *.tsbuildinfo
 
-# Logs
-*.log
-logs/
-frontend.log
+# Vite 编译产物 (由 vite.config.ts 生成)
+frontend/vite.config.d.ts
+frontend/vite.config.js
 
-# Environment
+# ========================
+# Environment variables
+# ========================
 .env
 .env.local
 .env.*.local
+# 注意: .env.example 应保留在仓库中作为模板
 
-# OS
-.DS_Store
-Thumbs.db
+# ========================
+# Logs
+# ========================
+*.log
+logs/
+frontend.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# ========================
+# Database files (development)
+# ========================
+*.db
+*.db-shm
+*.db-wal
+data/
+backend/data/
 
+# ========================
 # Test outputs
+# ========================
 coverage/
 .nyc_output/
 test-results/
@@ -39,14 +57,53 @@ frontend/test-results/
 frontend/test-results.json
 frontend/playwright-report/
 
-# Database files (development)
-*.db
-*.db-shm
-*.db-wal
-data/
-backend/data/
+# ========================
+# Python (sdk-python)
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.mypy_cache/
+.pytest_cache/
+venv/
+.venv/
+*.whl
 
-# Temporary files
+# ========================
+# Go (sdk-go)
+# ========================
+vendor/
+
+# ========================
+# OS files
+# ========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ========================
+# IDE / Editor
+# ========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# ========================
+# Temporary / Misc
+# ========================
 *.tmp
 *.temp
+*.bak
+*.backup
 .cache/
+.eslintcache
+
+# 临时测试脚本备份
+backend/package.json.test-scripts
