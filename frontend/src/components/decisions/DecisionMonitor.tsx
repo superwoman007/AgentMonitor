@@ -1,13 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { useState, useEffect, useCallback, useRef, type FC } from 'react';
 import { Decision, DecisionStats } from '../../types/decision';
 import { DecisionTimeline } from './DecisionTimeline';
 import { DecisionStatsCard } from './DecisionStatsCard';
@@ -22,25 +13,18 @@ interface DecisionMonitorProps {
   refreshInterval?: number;
 }
 
-type ViewMode = 'timeline' | 'table';
-
-export const DecisionMonitor: React.FC<DecisionMonitorProps> = ({
+export const DecisionMonitor: FC<DecisionMonitorProps> = ({
   projectId,
   sessionId,
   refreshInterval = 5000,
 }) => {
-  const { t, lang } = useTranslation();
+  const { t } = useTranslation();
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [stats, setStats] = useState<DecisionStats | null>(null);
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enableEnterAnimation, setEnableEnterAnimation] = useState(true);
-
-  // Filter states
-  const [filterType, setFilterType] = useState<string>('all');
-  const [filterMaker, setFilterMaker] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('timeline');
 
   const { fetchApi } = useApi();
   const pollingRef = useRef<{ stopped: boolean; inFlight: boolean }>({ stopped: false, inFlight: false });

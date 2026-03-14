@@ -50,7 +50,9 @@ export function DashboardPage() {
     if (!currentProject) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?projectId=${currentProject.id}`;
+    const isDev = !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
+    const wsHost = isDev ? `${window.location.hostname}:3000` : window.location.host;
+    const wsUrl = `${protocol}//${wsHost}/ws?projectId=${currentProject.id}`;
     let alive = true;
     let retryTimer: number | undefined;
 
