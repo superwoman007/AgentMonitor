@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { RefreshButton } from '../components/RefreshButton';
 import { useTranslation } from '../App';
 import { api, Session, Message, Trace } from '../api';
 
@@ -15,26 +16,34 @@ export function SessionDetailPage() {
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'timeline' | 'chat'>('timeline');
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!id) return;
-
     setIsLoading(true);
-    Promise.all([
-      api.sessions.get(id),
-      api.sessions.messages.list(id, { limit: 200 }),
-    ])
-      .then(([{ session }, { messages }]) => {
-        setSession(session);
-        setMessages(messages);
-        if (session.project_id) {
-          return api.traces.list(session.project_id, { sessionId: id, limit: 100 });
-        }
-        return { traces: [] };
-      })
-      .then(({ traces }) => setTraces(traces))
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
+    try {
+      const [{ session }, { messages }] = await Promise.all([
+        api.sessions.get(id),
+        api.sessions.messages.list(id, { limit: 200 }),
+      ]);
+      setSession(session);
+      setMessages(messages);
+      if (session.project_id) {
+        const { traces } = await api.traces.list(session.project_id, { sessionId: id, limit: 100 });
+        setTraces(traces);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const formatTime = (iso: string) => {
     return new Date(iso).toLocaleString();
@@ -120,14 +129,17 @@ export function SessionDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900">{t.sessionDetail}</h1>
             <p className="text-gray-500 mt-1 font-mono text-sm">{session.id}</p>
           </div>
-          {session.status === 'active' && (
-            <button
-              onClick={handleEndSession}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
-            >
-              {t.endSession}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <RefreshButton onRefresh={handleRefresh} />
+            {session.status === 'active' && (
+              <button
+                onClick={handleEndSession}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+              >
+                {t.endSession}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

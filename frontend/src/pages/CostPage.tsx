@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
+import { RefreshButton } from '../components/RefreshButton';
 import { useProjectStore } from '../stores/projectStore';
 import { api } from '../api';
 import { useTranslation } from '../App';
@@ -74,54 +75,60 @@ export function CostPage() {
     ensureDefaultProject().finally(() => setBootstrapped(true));
   }, [ensureDefaultProject]);
 
+  const loadData = useCallback(async () => {
+    if (!currentProject) return;
+    setLoading(true);
+    try {
+      const [summaryRes, byModelRes, topRes, suggestionsRes] = await Promise.allSettled([
+        api.cost.summary(currentProject.id, 7),
+        api.cost.byModel(currentProject.id),
+        api.cost.top(currentProject.id, 10),
+        api.cost.suggestions(currentProject.id),
+      ]);
+
+      if (summaryRes.status === 'fulfilled') {
+        setSummary(summaryRes.value.summary);
+        setTrend(summaryRes.value.trend);
+      } else {
+        console.error('Failed to fetch cost summary:', summaryRes.reason);
+      }
+
+      if (byModelRes.status === 'fulfilled') {
+        setByModel(byModelRes.value.byModel);
+      } else {
+        console.error('Failed to fetch cost by model:', byModelRes.reason);
+      }
+
+      if (topRes.status === 'fulfilled') {
+        setTopCalls(topRes.value.top);
+      } else {
+        console.error('Failed to fetch top expensive calls:', topRes.reason);
+      }
+
+      if (suggestionsRes.status === 'fulfilled') {
+        setSuggestions(suggestionsRes.value.suggestions);
+      } else {
+        console.error('Failed to fetch cost suggestions:', suggestionsRes.reason);
+      }
+    } catch (error) {
+      console.error('Failed to fetch cost data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentProject]);
+
   useEffect(() => {
     if (!bootstrapped) return;
     if (!currentProject) {
       setLoading(false);
       return;
     }
+    loadData();
+  }, [bootstrapped, currentProject?.id, loadData]);
 
-    (async () => {
-      setLoading(true);
-      try {
-        const [summaryRes, byModelRes, topRes, suggestionsRes] = await Promise.allSettled([
-          api.cost.summary(currentProject.id, 7),
-          api.cost.byModel(currentProject.id),
-          api.cost.top(currentProject.id, 10),
-          api.cost.suggestions(currentProject.id),
-        ]);
-
-        if (summaryRes.status === 'fulfilled') {
-          setSummary(summaryRes.value.summary);
-          setTrend(summaryRes.value.trend);
-        } else {
-          console.error('Failed to fetch cost summary:', summaryRes.reason);
-        }
-
-        if (byModelRes.status === 'fulfilled') {
-          setByModel(byModelRes.value.byModel);
-        } else {
-          console.error('Failed to fetch cost by model:', byModelRes.reason);
-        }
-
-        if (topRes.status === 'fulfilled') {
-          setTopCalls(topRes.value.top);
-        } else {
-          console.error('Failed to fetch top expensive calls:', topRes.reason);
-        }
-
-        if (suggestionsRes.status === 'fulfilled') {
-          setSuggestions(suggestionsRes.value.suggestions);
-        } else {
-          console.error('Failed to fetch cost suggestions:', suggestionsRes.reason);
-        }
-      } catch (error) {
-        console.error('Failed to fetch cost data:', error);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [bootstrapped, currentProject?.id]);
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const formatCost = (cost: number) => `$${cost.toFixed(4)}`;
 
@@ -142,9 +149,12 @@ export function CostPage() {
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t.costAnalysis}</h1>
-        <p className="text-gray-500 text-sm mt-1">{t.costDesc}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t.costAnalysis}</h1>
+          <p className="text-gray-500 text-sm mt-1">{t.costDesc}</p>
+        </div>
+        <RefreshButton onRefresh={handleRefresh} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

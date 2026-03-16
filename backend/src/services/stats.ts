@@ -110,26 +110,48 @@ export async function getProjectStats(projectId: string): Promise<Stats> {
     queryOne<{ tokens: unknown }>(
       isSqlite
         ? `SELECT COALESCE(SUM(
-            COALESCE(json_extract(metadata, '$.usage.prompt_tokens'), 0) +
-            COALESCE(json_extract(metadata, '$.usage.completion_tokens'), 0) +
-            COALESCE(json_extract(metadata, '$.usage.inputTokens'), 0) +
-            COALESCE(json_extract(metadata, '$.usage.outputTokens'), 0) +
-            COALESCE(json_extract(metadata, '$.prompt_tokens'), 0) +
-            COALESCE(json_extract(metadata, '$.completion_tokens'), 0) +
-            COALESCE(json_extract(metadata, '$.inputTokens'), 0) +
-            COALESCE(json_extract(metadata, '$.outputTokens'), 0)
+            CASE
+              WHEN json_extract(metadata, '$.usage.total_tokens') IS NOT NULL THEN CAST(json_extract(metadata, '$.usage.total_tokens') AS INTEGER)
+              WHEN json_extract(metadata, '$.total_tokens') IS NOT NULL THEN CAST(json_extract(metadata, '$.total_tokens') AS INTEGER)
+              WHEN json_extract(metadata, '$.tokens') IS NOT NULL THEN CAST(json_extract(metadata, '$.tokens') AS INTEGER)
+              ELSE (
+                COALESCE(CAST(json_extract(metadata, '$.usage.prompt_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.usage.completion_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.usage.input_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.usage.output_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.usage.inputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.usage.outputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.prompt_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.completion_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.input_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.output_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.inputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS INTEGER), 0)
+              )
+            END
           ), 0) as tokens
            FROM traces
            WHERE project_id = $1 AND metadata IS NOT NULL`
         : `SELECT COALESCE(SUM(
-            COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) +
-            COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) +
-            COALESCE((metadata->'usage'->>'inputTokens')::int, 0) +
-            COALESCE((metadata->'usage'->>'outputTokens')::int, 0) +
-            COALESCE((metadata->>'prompt_tokens')::int, 0) +
-            COALESCE((metadata->>'completion_tokens')::int, 0) +
-            COALESCE((metadata->>'inputTokens')::int, 0) +
-            COALESCE((metadata->>'outputTokens')::int, 0)
+            CASE
+              WHEN (metadata->'usage'->>'total_tokens') ~ '^[0-9]+$' THEN (metadata->'usage'->>'total_tokens')::int
+              WHEN (metadata->>'total_tokens') ~ '^[0-9]+$' THEN (metadata->>'total_tokens')::int
+              WHEN (metadata->>'tokens') ~ '^[0-9]+$' THEN (metadata->>'tokens')::int
+              ELSE (
+                COALESCE((metadata->'usage'->>'prompt_tokens')::int, 0) +
+                COALESCE((metadata->'usage'->>'completion_tokens')::int, 0) +
+                COALESCE((metadata->'usage'->>'input_tokens')::int, 0) +
+                COALESCE((metadata->'usage'->>'output_tokens')::int, 0) +
+                COALESCE((metadata->'usage'->>'inputTokens')::int, 0) +
+                COALESCE((metadata->'usage'->>'outputTokens')::int, 0) +
+                COALESCE((metadata->>'prompt_tokens')::int, 0) +
+                COALESCE((metadata->>'completion_tokens')::int, 0) +
+                COALESCE((metadata->>'input_tokens')::int, 0) +
+                COALESCE((metadata->>'output_tokens')::int, 0) +
+                COALESCE((metadata->>'inputTokens')::int, 0) +
+                COALESCE((metadata->>'outputTokens')::int, 0)
+              )
+            END
           ), 0)::text as tokens
            FROM traces
            WHERE project_id = $1 AND metadata IS NOT NULL`,
@@ -289,27 +311,49 @@ export async function getUserStats(userId: string): Promise<Stats & { totalApiKe
     queryOne<{ tokens: unknown }>(
       isSqlite
         ? `SELECT COALESCE(SUM(
-            COALESCE(json_extract(t.metadata, '$.usage.prompt_tokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.usage.completion_tokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.usage.inputTokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.usage.outputTokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.prompt_tokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.completion_tokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.inputTokens'), 0) +
-            COALESCE(json_extract(t.metadata, '$.outputTokens'), 0)
+            CASE
+              WHEN json_extract(t.metadata, '$.usage.total_tokens') IS NOT NULL THEN CAST(json_extract(t.metadata, '$.usage.total_tokens') AS INTEGER)
+              WHEN json_extract(t.metadata, '$.total_tokens') IS NOT NULL THEN CAST(json_extract(t.metadata, '$.total_tokens') AS INTEGER)
+              WHEN json_extract(t.metadata, '$.tokens') IS NOT NULL THEN CAST(json_extract(t.metadata, '$.tokens') AS INTEGER)
+              ELSE (
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.prompt_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.completion_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.input_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.output_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.inputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.usage.outputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.prompt_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.completion_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.input_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.output_tokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.inputTokens') AS INTEGER), 0) +
+                COALESCE(CAST(json_extract(t.metadata, '$.outputTokens') AS INTEGER), 0)
+              )
+            END
           ), 0) as tokens
            FROM traces t
            JOIN projects p ON t.project_id = p.id
            WHERE p.user_id = $1 AND t.metadata IS NOT NULL`
         : `SELECT COALESCE(SUM(
-            COALESCE((t.metadata->'usage'->>'prompt_tokens')::int, 0) +
-            COALESCE((t.metadata->'usage'->>'completion_tokens')::int, 0) +
-            COALESCE((t.metadata->'usage'->>'inputTokens')::int, 0) +
-            COALESCE((t.metadata->'usage'->>'outputTokens')::int, 0) +
-            COALESCE((t.metadata->>'prompt_tokens')::int, 0) +
-            COALESCE((t.metadata->>'completion_tokens')::int, 0) +
-            COALESCE((t.metadata->>'inputTokens')::int, 0) +
-            COALESCE((t.metadata->>'outputTokens')::int, 0)
+            CASE
+              WHEN (t.metadata->'usage'->>'total_tokens') ~ '^[0-9]+$' THEN (t.metadata->'usage'->>'total_tokens')::int
+              WHEN (t.metadata->>'total_tokens') ~ '^[0-9]+$' THEN (t.metadata->>'total_tokens')::int
+              WHEN (t.metadata->>'tokens') ~ '^[0-9]+$' THEN (t.metadata->>'tokens')::int
+              ELSE (
+                COALESCE((t.metadata->'usage'->>'prompt_tokens')::int, 0) +
+                COALESCE((t.metadata->'usage'->>'completion_tokens')::int, 0) +
+                COALESCE((t.metadata->'usage'->>'input_tokens')::int, 0) +
+                COALESCE((t.metadata->'usage'->>'output_tokens')::int, 0) +
+                COALESCE((t.metadata->'usage'->>'inputTokens')::int, 0) +
+                COALESCE((t.metadata->'usage'->>'outputTokens')::int, 0) +
+                COALESCE((t.metadata->>'prompt_tokens')::int, 0) +
+                COALESCE((t.metadata->>'completion_tokens')::int, 0) +
+                COALESCE((t.metadata->>'input_tokens')::int, 0) +
+                COALESCE((t.metadata->>'output_tokens')::int, 0) +
+                COALESCE((t.metadata->>'inputTokens')::int, 0) +
+                COALESCE((t.metadata->>'outputTokens')::int, 0)
+              )
+            END
           ), 0)::text as tokens
            FROM traces t
            JOIN projects p ON t.project_id = p.id

@@ -223,6 +223,7 @@ export const i18n = {
     consLabel: 'Cons',
     contextTitle: 'Context',
     metadataTitle: 'Metadata',
+    refresh: 'Refresh',
   },
   zh: {
     title: 'AgentMonitor',
@@ -446,6 +447,7 @@ export const i18n = {
     consLabel: '缺点',
     contextTitle: '上下文',
     metadataTitle: '元数据',
+    refresh: '刷新',
   },
 };
 

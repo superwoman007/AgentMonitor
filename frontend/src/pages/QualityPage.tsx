@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
+import { RefreshButton } from '../components/RefreshButton';
 import { useProjectStore } from '../stores/projectStore';
 import { api } from '../api';
 import { useTranslation } from '../App';
@@ -40,33 +41,39 @@ export function QualityPage() {
     ensureDefaultProject().finally(() => setBootstrapped(true));
   }, [ensureDefaultProject]);
 
+  const loadData = useCallback(async () => {
+    if (!currentProject) return;
+    setLoading(true);
+    try {
+      const [scoreRes, trendRes] = await Promise.allSettled([
+        api.quality.score(currentProject.id),
+        api.quality.trend(currentProject.id, 7),
+      ]);
+      if (scoreRes.status === 'fulfilled') {
+        setScore(scoreRes.value.score);
+      }
+      if (trendRes.status === 'fulfilled') {
+        setTrend(trendRes.value.trend);
+      }
+    } catch (error) {
+      console.error('Failed to fetch quality data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentProject]);
+
   useEffect(() => {
     if (!bootstrapped) return;
     if (!currentProject) {
       setLoading(false);
       return;
     }
+    loadData();
+  }, [bootstrapped, currentProject?.id, loadData]);
 
-    (async () => {
-      setLoading(true);
-      try {
-        const [scoreRes, trendRes] = await Promise.allSettled([
-          api.quality.score(currentProject.id),
-          api.quality.trend(currentProject.id, 7),
-        ]);
-        if (scoreRes.status === 'fulfilled') {
-          setScore(scoreRes.value.score);
-        }
-        if (trendRes.status === 'fulfilled') {
-          setTrend(trendRes.value.trend);
-        }
-      } catch (error) {
-        console.error('Failed to fetch quality data:', error);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [bootstrapped, currentProject?.id]);
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600';
@@ -85,16 +92,19 @@ export function QualityPage() {
       <Layout>
         <div className="flex items-center justify-center h-64">
           <div className="text-gray-500">{t.loading}</div>
-      </div>
+        </div>
       </Layout>
     );
   }
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t.qualityAnalysis}</h1>
-        <p className="text-gray-500 text-sm mt-1">{t.qualityDesc}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t.qualityAnalysis}</h1>
+          <p className="text-gray-500 text-sm mt-1">{t.qualityDesc}</p>
+        </div>
+        <RefreshButton onRefresh={handleRefresh} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

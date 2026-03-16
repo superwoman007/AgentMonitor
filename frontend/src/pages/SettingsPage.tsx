@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
+import { RefreshButton } from '../components/RefreshButton';
 import {useProjectStore } from '../stores/projectStore';
 import { api, ApiKey, Project } from '../api';
 import { useTranslation } from '../App';
@@ -142,6 +143,13 @@ export function SettingsPage() {
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    if (currentProject) {
+      const { apiKeys: keys } = await api.apiKeys.list(currentProject.id);
+      setApiKeys(keys);
+    }
+  }, [currentProject]);
+
   const startEditProject = (project: Project) => {
     setEditingProject(project);
     setEditName(project.name);
@@ -150,8 +158,9 @@ export function SettingsPage() {
 
   return (
     <Layout>
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">{t.settings}</h1>
+        <RefreshButton onRefresh={handleRefresh} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../App';
 import { useBreakpointStore } from '../stores/breakpointStore';
 import { useSnapshotStore } from '../stores/snapshotStore';
 import { useProjectStore } from '../stores/projectStore';
+import { RefreshButton } from '../components/RefreshButton';
 import { Layout } from '../components/Layout';
 
 export function DebuggingPage() {
@@ -26,12 +27,22 @@ export function DebuggingPage() {
     condition: '',
   });
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (currentProject) {
-      fetchBreakpoints(currentProject.id);
-      fetchSnapshots(currentProject.id);
+      await Promise.all([
+        fetchBreakpoints(currentProject.id),
+        fetchSnapshots(currentProject.id),
+      ]);
     }
-  }, [currentProject]);
+  }, [currentProject, fetchBreakpoints, fetchSnapshots]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const handleCreateBreakpoint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,12 +61,15 @@ export function DebuggingPage() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">{t.breakpoints}</h1>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            {t.addBreakpoint}
-          </button>
+          <div className="flex items-center gap-2">
+            <RefreshButton onRefresh={handleRefresh} />
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              {t.addBreakpoint}
+            </button>
+          </div>
         </div>
 
         {/* 断点列表 */}

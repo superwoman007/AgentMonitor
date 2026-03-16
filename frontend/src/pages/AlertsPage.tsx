@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { RefreshButton } from '../components/RefreshButton';
 import { useProjectStore } from '../stores/projectStore';
 import { api, Alert, AlertHistory } from '../api';
 import { useTranslation } from '../App';
@@ -220,6 +221,7 @@ export function AlertsPage() {
           <p className="text-gray-500 text-sm mt-1">{t.alertDesc}</p>
         </div>
         <div className="flex items-center gap-2">
+          <RefreshButton onRefresh={fetchData} />
           <button
             onClick={handleCheckNow}
             disabled={checking || !currentProject}

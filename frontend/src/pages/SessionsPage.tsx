@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { SessionList } from '../components/SessionList';
+import { RefreshButton } from '../components/RefreshButton';
 import { useProjectStore } from '../stores/projectStore';
 import { api, Session } from '../api';
 import { useTranslation } from '../App';
@@ -16,15 +17,24 @@ export function SessionsPage() {
     ensureDefaultProject().finally(() => setBootstrapped(true));
   }, [ensureDefaultProject]);
 
-  useEffect(() => {
-    if (currentProject) {
-      setIsLoading(true);
-      api.sessions.list(currentProject.id, { limit: 100 })
-        .then(({ sessions }) => setSessions(sessions))
-        .catch(console.error)
-        .finally(() => setIsLoading(false));
+  const loadSessions = useCallback(async () => {
+    if (!currentProject) return;
+    setIsLoading(true);
+    try {
+      const { sessions } = await api.sessions.list(currentProject.id, { limit: 100 });
+      setSessions(sessions);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
   }, [currentProject]);
+
+  useEffect(() => {
+    if (currentProject) {
+      loadSessions();
+    }
+  }, [currentProject, loadSessions]);
 
   useEffect(() => {
     if (bootstrapped && !currentProject) {
@@ -32,11 +42,18 @@ export function SessionsPage() {
     }
   }, [bootstrapped, currentProject]);
 
+  const handleRefresh = useCallback(async () => {
+    await loadSessions();
+  }, [loadSessions]);
+
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t.sessionList}</h1>
-        <p className="text-gray-500 mt-1">{t.sessions}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t.sessionList}</h1>
+          <p className="text-gray-500 mt-1">{t.sessions}</p>
+        </div>
+        <RefreshButton onRefresh={handleRefresh} />
       </div>
 
       <SessionList sessions={sessions} isLoading={isLoading} />

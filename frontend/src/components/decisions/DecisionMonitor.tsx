@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type FC } from 'react';
+import { useState, useEffect, useCallback, useRef, type FC, type MutableRefObject } from 'react';
 import { Decision, DecisionStats } from '../../types/decision';
 import { DecisionTimeline } from './DecisionTimeline';
 import { DecisionStatsCard } from './DecisionStatsCard';
@@ -11,12 +11,14 @@ interface DecisionMonitorProps {
   projectId: string;
   sessionId?: string;
   refreshInterval?: number;
+  onRefreshRef?: MutableRefObject<(() => Promise<void>) | null>;
 }
 
 export const DecisionMonitor: FC<DecisionMonitorProps> = ({
   projectId,
   sessionId,
   refreshInterval = 5000,
+  onRefreshRef,
 }) => {
   const { t } = useTranslation();
   const [decisions, setDecisions] = useState<Decision[]>([]);
@@ -61,6 +63,20 @@ export const DecisionMonitor: FC<DecisionMonitorProps> = ({
       return;
     }
   }, [projectId, fetchApi]);
+
+  // Expose refresh method to parent via ref
+  useEffect(() => {
+    if (onRefreshRef) {
+      onRefreshRef.current = async () => {
+        await Promise.all([fetchDecisions(), fetchStats()]);
+      };
+    }
+    return () => {
+      if (onRefreshRef) {
+        onRefreshRef.current = null;
+      }
+    };
+  }, [onRefreshRef, fetchDecisions, fetchStats]);
 
   useEffect(() => {
     pollingRef.current.stopped = false;

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { StatsCards } from '../components/StatsCards';
 import { TraceList } from '../components/TraceList';
 import { TraceDetail } from '../components/TraceDetail';
 import { ConnectionStatus, ConnectionStatusType } from '../components/ConnectionStatus';
+import { RefreshButton } from '../components/RefreshButton';
 import { useAuthStore } from '../stores/authStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useTraceStore } from '../stores/traceStore';
@@ -116,11 +117,23 @@ export function DashboardPage() {
     };
   }, [currentProject?.id, addTrace]);
 
+  const handleRefresh = useCallback(async () => {
+    if (currentProject) {
+      await Promise.all([
+        fetchTraces(currentProject.id),
+        fetchStats(currentProject.id),
+      ]);
+    }
+  }, [currentProject, fetchTraces, fetchStats]);
+
   return (
     <Layout>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">{t.dashboard}</h1>
-        <ConnectionStatus status={wsStatus} />
+        <div className="flex items-center gap-2">
+          <RefreshButton onRefresh={handleRefresh} />
+          <ConnectionStatus status={wsStatus} />
+        </div>
       </div>
 
       <StatsCards stats={stats} />
