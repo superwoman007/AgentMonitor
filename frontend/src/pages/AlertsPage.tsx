@@ -153,13 +153,13 @@ export function AlertsPage() {
   const formatHistorySummary = (h: AlertHistory) => {
     if (!h.alertType || h.threshold === undefined || h.actual === undefined) return null;
     if (h.alertType === 'latency' && typeof h.actual === 'number') {
-      return `平均延迟 ${h.actual.toFixed(0)}ms > 阈值 ${h.threshold}ms`;
+      return `${t.latency} ${h.actual.toFixed(0)}ms > ${t.threshold} ${h.threshold}ms`;
     }
     if (h.alertType === 'error_rate' && typeof h.actual === 'number') {
-      return `错误率 ${(h.actual * 100).toFixed(1)}% > 阈值 ${(h.threshold * 100).toFixed(1)}%`;
+      return `${t.errorRate} ${(h.actual * 100).toFixed(1)}% > ${t.threshold} ${(h.threshold * 100).toFixed(1)}%`;
     }
     if (h.alertType === 'cost' && typeof h.actual === 'number') {
-      return `近 1 天成本 $${h.actual.toFixed(4)} > 阈值 $${h.threshold}`;
+      return `${t.cost} $${h.actual.toFixed(4)} > ${t.threshold} $${h.threshold}`;
     }
     return null;
   };
@@ -170,9 +170,9 @@ export function AlertsPage() {
 
     const parts: string[] = [];
     parts.push(`${e.traceType}/${e.name}`);
-    if (typeof e.latencyMs === 'number') parts.push(`延迟 ${e.latencyMs}ms`);
-    if (e.status) parts.push(`状态 ${e.status}`);
-    if (typeof e.cost === 'number') parts.push(`成本 $${e.cost.toFixed(4)}`);
+    if (typeof e.latencyMs === 'number') parts.push(`${t.latency} ${e.latencyMs}ms`);
+    if (e.status) parts.push(`${t.status} ${e.status}`);
+    if (typeof e.cost === 'number') parts.push(`${t.cost} $${e.cost.toFixed(4)}`);
 
     return parts.join(' · ');
   };
@@ -279,7 +279,7 @@ export function AlertsPage() {
                     <span className="inline-block px-2 py-0.5 bg-gray-100 rounded text-xs mr-2">
                       {getTypeLabel(alert.type)}
                     </span>
-                    <span>阈值: {formatThreshold(alert)}</span>
+                    <span>{t.threshold}: {formatThreshold(alert)}</span>
                   </div>
                   {alert.lastTriggered && (
                     <div className="text-xs text-gray-400 mt-2">
@@ -311,11 +311,11 @@ export function AlertsPage() {
                   )}
                   {h.evidenceTrace && (
                     <div className="text-xs text-gray-700 mt-1">
-                      <span className="text-gray-500">关联调用：</span>
+                      <span className="text-gray-500">{t.linkedTrace}：</span>
                       {formatEvidence(h)}
                       {h.evidenceTrace.sessionId && (
                         <>
-                          <span className="text-gray-500"> · 会话：</span>
+                          <span className="text-gray-500"> · {t.session}：</span>
                           <Link
                             to={`/sessions/${h.evidenceTrace.sessionId}`}
                             className="text-blue-600 hover:underline"
@@ -424,7 +424,7 @@ export function AlertsPage() {
                       value={formData.condition}
                       onChange={(e) => setFormData({ ...formData, condition: e.target.value })}
                       className="w-full px-3 py-2 border rounded-lg font-mono text-sm"
-                      placeholder="context.metrics.avgLatency > 1000"
+                      placeholder={t.alertConditionExample}
                     />
                     <p className="text-xs text-gray-500 mt-1">{t.customConditionHint}</p>
                   </div>

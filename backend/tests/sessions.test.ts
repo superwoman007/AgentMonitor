@@ -7,6 +7,7 @@ describe('Sessions API', () => {
   let apiKey: string;
   let projectId: string;
   let sessionId: string;
+  let authToken: string;
 
   beforeAll(async () => {
     app = await buildApp();
@@ -22,7 +23,7 @@ describe('Sessions API', () => {
         name: 'Session Test User'
       });
     
-    const authToken = registerResponse.body.token;
+    authToken = registerResponse.body.token;
 
     const projectResponse = await request(app.server)
       .post('/api/projects')
@@ -178,6 +179,34 @@ describe('Sessions API', () => {
       await request(app.server)
         .get('/api/sessions/99999')
         .set('X-API-Key', apiKey)
+        .expect(404);
+    });
+  });
+
+  describe('POST /api/sessions/:id/export-dataset', () => {
+    it('应该将会话消息导出为数据集', async () => {
+      const response = await request(app.server)
+        .post(`/api/sessions/${sessionId}/export-dataset`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'Test Export Dataset' })
+        .expect(201);
+
+      expect(response.body).toHaveProperty('dataset');
+      expect(response.body).toHaveProperty('itemCount');
+      expect(response.body.itemCount).toBe(1); // user + assistant pair
+      expect(response.body.dataset.name).toBe('Test Export Dataset');
+    });
+
+    it('应该拒绝未授权的请求', async () => {
+      await request(app.server)
+        .post(`/api/sessions/${sessionId}/export-dataset`)
+        .expect(401);
+    });
+
+    it('应该拒绝访问不存在的会话', async () => {
+      await request(app.server)
+        .post('/api/sessions/nonexistent/export-dataset')
+        .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
     });
   });

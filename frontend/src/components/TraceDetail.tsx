@@ -56,6 +56,20 @@ export function TraceDetail({ trace }: TraceDetailProps) {
           </div>
         </div>
 
+        {trace.prompt_id && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-sm font-medium text-blue-700 mb-1">{t.linkedPrompt}</p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-mono text-blue-600">{trace.prompt_id}</span>
+              {trace.prompt_version_id && (
+                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                  {t.promptVersion}: {trace.prompt_version_id.slice(0, 8)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm font-medium text-gray-500 mb-1">{t.latency}</p>

@@ -15,6 +15,12 @@ import { QualityPage } from './pages/QualityPage';
 import { CostPage } from './pages/CostPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { DecisionsPage } from './pages/DecisionsPage';
+import { EvaluationPage } from './pages/EvaluationPage';
+import { PromptsPage } from './pages/PromptsPage';
+import { TracesPage } from './pages/TracesPage';
+import { TraceDetailPage } from './pages/TraceDetailPage';
+import { ModelConfigsPage } from './pages/ModelConfigsPage';
+import { FeedbackPage } from './pages/FeedbackPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 interface TranslationContextType {
@@ -109,6 +115,54 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <DecisionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/prompts"
+        element={
+          <ProtectedRoute>
+            <PromptsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/model-configs"
+        element={
+          <ProtectedRoute>
+            <ModelConfigsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/traces"
+        element={
+          <ProtectedRoute>
+            <TracesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/traces/:id"
+        element={
+          <ProtectedRoute>
+            <TraceDetailPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/feedback"
+        element={
+          <ProtectedRoute>
+            <FeedbackPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/evaluation"
+        element={
+          <ProtectedRoute>
+            <EvaluationPage />
           </ProtectedRoute>
         }
       />

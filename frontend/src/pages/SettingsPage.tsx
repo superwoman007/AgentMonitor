@@ -82,7 +82,6 @@ export function SettingsPage() {
   const handleRevealKey = async (keyId: string) => {
     if (!currentProject) return;
     
-    // 如果已经显示，则隐藏
     if (revealedKeys[keyId]) {
       const newRevealed = { ...revealedKeys };
       delete newRevealed[keyId];
@@ -90,14 +89,13 @@ export function SettingsPage() {
       return;
     }
     
-    // 否则从后端获取
     setLoadingReveal({ ...loadingReveal, [keyId]: true });
     try {
       const { secret } = await api.apiKeys.getSecret(keyId, currentProject.id);
       setRevealedKeys({ ...revealedKeys, [keyId]: secret });
     } catch (error) {
       console.error('Failed to reveal API key:', error);
-      alert('无法获取 API Key');
+      alert(t.cannotGetApiKey);
     } finally {
       setLoadingReveal({ ...loadingReveal, [keyId]: false });
     }
@@ -182,13 +180,13 @@ export function SettingsPage() {
                   type="text"
                   value={newProjectName}
                   onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder={t.projectName || '项目名称'}
+                  placeholder={t.projectName}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
                 <textarea
                   value={newProjectDesc}
                   onChange={(e) => setNewProjectDesc(e.target.value)}
-                  placeholder={t.projectDescription || '项目描述'}
+                  placeholder={t.projectDescription}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                   rows={2}
                 />
@@ -307,7 +305,7 @@ export function SettingsPage() {
                   type="text"
                   value={newKeyName}
                   onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder={t.apiKeyName || 'Key 名称'}
+                  placeholder={t.apiKeyName}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 />
                 <div className="flex gap-2">
@@ -346,7 +344,7 @@ export function SettingsPage() {
                   {t.copy}
                 </button>
               </div>
-              <p className="text-xs text-green-600 mt-2">请保存此 Key！之后不会再次显示。</p>
+              <p className="text-xs text-green-600 mt-2">{t.saveKeyNotice}</p>
             </div>
           )}
 
@@ -372,7 +370,7 @@ export function SettingsPage() {
                               onClick={() => handleCopyKey(revealedKeys[key.id])}
                               className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
                             >
-                              复制
+                              {t.copy}
                             </button>
                           </div>
                         </div>
@@ -392,7 +390,7 @@ export function SettingsPage() {
                           disabled={loadingReveal[key.id]}
                           className="text-blue-600 hover:text-blue-800 text-sm disabled:text-gray-400"
                         >
-                          {loadingReveal[key.id] ? '加载中...' : revealedKeys[key.id] ? '隐藏' : '显示 Key'}
+                          {loadingReveal[key.id] ? t.loadingShort : revealedKeys[key.id] ? t.hideKey : t.showKey}
                         </button>
                         <button
                           onClick={() => handleRevokeKey(key.id)}

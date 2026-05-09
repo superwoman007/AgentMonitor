@@ -174,15 +174,27 @@ class ApiClient {
   };
 
   traces = {
-    list: (projectId: string, params?: { sessionId?: string; limit?: number; offset?: number }) => {
+    list: (projectId: string, params?: { sessionId?: string; parentTraceId?: string; evalStatus?: string; limit?: number; offset?: number }) => {
       const query = new URLSearchParams({ projectId });
       if (params?.sessionId) query.set('sessionId', params.sessionId);
+      if (params?.parentTraceId !== undefined) query.set('parentTraceId', params.parentTraceId);
+      if (params?.evalStatus) query.set('evalStatus', params.evalStatus);
       if (params?.limit) query.set('limit', String(params.limit));
       if (params?.offset) query.set('offset', String(params.offset));
       return this.request<{ traces: Trace[] }>(`/traces?${query.toString()}`);
     },
 
-    get: (id: string) => this.request<{ trace: Trace }>(`/traces/${id}`),
+    get: (id: string) => this.request<{ trace: Trace; childCount: number }>(`/traces/${id}`),
+    getTree: (id: string) => this.request<TraceTreeResponse>(`/traces/${id}/tree`),
+    exportOtel: (id: string) => this.request<{ span: Record<string, unknown> }>(`/traces/${id}/otel`),
+    exportSessionOtel: (sessionId: string, projectId: string) => this.request<{ resourceSpans: unknown[] }>(`/traces/session/${sessionId}/otel?projectId=${projectId}`),
+    importOtel: (data: { resourceSpans: unknown[] }) => this.request<{ imported: number; traceIds: string[] }>('/traces/otel-export', { method: 'POST', body: JSON.stringify(data) }),
+    addToDataset: (id: string, data: { datasetId?: string; datasetName?: string; expectedOutput?: string }) => this.request<{ item: DatasetItem; dataset: Dataset }>(`/traces/${id}/add-to-dataset`, { method: 'POST', body: JSON.stringify(data) }),
+    bulkExportDataset: (data: { projectId: string; traceIds?: string[]; filters?: { status?: string; traceType?: string; sessionId?: string }; datasetName?: string; datasetId?: string }) => this.request<{ imported: number; dataset: Dataset; traceIds: string[] }>('/traces/bulk-export-dataset', { method: 'POST', body: JSON.stringify(data) }),
+    addEval: (id: string, data: { evaluator?: string; score: number; passed: number | boolean; details?: Record<string, unknown> }) =>
+      this.request<{ success: boolean; evalResult: TraceEvalResult }>(`/traces/${id}/eval`, { method: 'POST', body: JSON.stringify(data) }),
+    getEvals: (id: string) =>
+      this.request<{ evaluations: TraceEvalResult[] }>(`/traces/${id}/evaluations`),
   };
 
   sessions = {
@@ -220,6 +232,14 @@ class ApiClient {
           body: JSON.stringify(data),
         }),
     },
+
+    timeline: (sessionId: string) =>
+      this.request<{ timeline: TimelineItem[] }>(`/sessions/${sessionId}/timeline`),
+    exportDataset: (sessionId: string, data?: { name?: string }) =>
+      this.request<{ dataset: Dataset; itemCount: number }>(`/sessions/${sessionId}/export-dataset`, {
+        method: 'POST',
+        body: JSON.stringify(data || {}),
+      }),
   };
 
   stats = {
@@ -227,6 +247,10 @@ class ApiClient {
       const query = projectId ? `?projectId=${projectId}` : '';
       return this.request<{ stats: Stats }>(`/stats${query}`);
     },
+    observation: (projectId: string) =>
+      this.request<ObservationStats>(`/stats/observation?project_id=${projectId}`),
+    trend: (projectId: string, days?: number) =>
+      this.request<{ trend: TrendPoint[] }>(`/stats/trend?project_id=${projectId}${days ? `&days=${days}` : ''}`),
   };
 
   alerts = {
@@ -334,6 +358,290 @@ class ApiClient {
     suggestions: (projectId: string) =>
       this.request<{ suggestions: CostSuggestion[] }>(`/cost/suggestions?projectId=${projectId}`),
   };
+
+  evaluation = {
+    datasets: {
+      list: (projectId: string) =>
+        this.request<Dataset[]>(`/evaluation/datasets?project_id=${projectId}`),
+      create: (data: { project_id: string; name: string; description?: string; type?: string; auto_create_evaluators?: boolean }) =>
+        this.request<Dataset & { preset_evaluators?: Evaluator[] }>('/evaluation/datasets', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: { name?: string; description?: string; type?: string }) =>
+        this.request<Dataset>(`/evaluation/datasets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        this.request<void>(`/evaluation/datasets/${id}`, { method: 'DELETE' }),
+      createPresetEvaluators: (id: string, projectId: string) =>
+        this.request<{ evaluators: Evaluator[] }>(`/evaluation/datasets/${id}/preset-evaluators`, { method: 'POST', body: JSON.stringify({ project_id: projectId }) }),
+      items: {
+        list: (datasetId: string) =>
+          this.request<DatasetItem[]>(`/evaluation/datasets/${datasetId}/items`),
+        add: (datasetId: string, items: Array<{ input: string; expected_output?: string }>) =>
+          this.request<DatasetItem[]>(`/evaluation/datasets/${datasetId}/items`, {
+            method: 'POST',
+            body: JSON.stringify({ items }),
+          }),
+        update: (itemId: string, data: { input?: string; expected_output?: string }) =>
+          this.request<DatasetItem>(`/evaluation/datasets/items/${itemId}`, { method: 'PUT', body: JSON.stringify(data) }),
+        delete: (itemId: string) =>
+          this.request<void>(`/evaluation/datasets/items/${itemId}`, { method: 'DELETE' }),
+      },
+    },
+    evaluatorTemplates: {
+      list: (type?: string) =>
+        this.request<{ templates: EvaluatorTemplate[] }>(`/evaluation/evaluator-templates${type ? `?type=${type}` : ''}`),
+    },
+    evaluators: {
+      list: (projectId: string) =>
+        this.request<Evaluator[]>(`/evaluation/evaluators?project_id=${projectId}`),
+      create: (data: { project_id: string; name: string; description?: string; type: string; config?: Record<string, unknown>; model_config_id?: string }) =>
+        this.request<Evaluator>('/evaluation/evaluators', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: { name?: string; description?: string; type?: string; config?: Record<string, unknown>; model_config_id?: string }) =>
+        this.request<Evaluator>(`/evaluation/evaluators/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        this.request<void>(`/evaluation/evaluators/${id}`, { method: 'DELETE' }),
+    },
+    experiments: {
+      list: (projectId: string) =>
+        this.request<EvaluationExperiment[]>(`/evaluation/experiments?project_id=${projectId}`),
+      create: (data: { project_id: string; name: string; description?: string; dataset_id: string; model_config?: Record<string, unknown> }) =>
+        this.request<EvaluationExperiment>('/evaluation/experiments', { method: 'POST', body: JSON.stringify(data) }),
+      start: (id: string) =>
+        this.request<EvaluationExperiment>(`/evaluation/experiments/${id}/start`, { method: 'POST' }),
+      complete: (id: string, results_summary?: Record<string, unknown>) =>
+        this.request<EvaluationExperiment>(`/evaluation/experiments/${id}/complete`, {
+          method: 'POST',
+          body: JSON.stringify({ results_summary }),
+        }),
+      delete: (id: string) =>
+        this.request<void>(`/evaluation/experiments/${id}`, { method: 'DELETE' }),
+      results: (id: string) =>
+        this.request<EvaluationResult[]>(`/evaluation/experiments/${id}/results`),
+      progress: (id: string) =>
+        this.request<ExperimentProgress>(`/evaluation/experiments/${id}/progress`),
+      report: (id: string) =>
+        this.request<any>(`/evaluation/experiments/${id}/report`),
+      badcases: (id: string) =>
+        this.request<{ badcases: any[] }>(`/evaluation/experiments/${id}/badcases`),
+      scriptTemplate: (id: string) =>
+        this.request<{ typescript: string; python: string }>(`/evaluation/experiments/${id}/script-template`),
+    },
+    autoEvalTasks: {
+      list: (projectId: string) =>
+        this.request<{ tasks: AutoEvalTask[] }>(`/evaluation/auto-eval-tasks?project_id=${projectId}`),
+      create: (data: { project_id: string; name: string; dataset_id: string; evaluator_id?: string; interval_hours?: number; sample_count?: number; trace_type_filter?: string; enabled?: boolean }) =>
+        this.request<AutoEvalTask>('/evaluation/auto-eval-tasks', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: { name?: string; interval_hours?: number; sample_count?: number; trace_type_filter?: string; enabled?: boolean }) =>
+        this.request<AutoEvalTask>(`/evaluation/auto-eval-tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+      delete: (id: string) =>
+        this.request<void>(`/evaluation/auto-eval-tasks/${id}`, { method: 'DELETE' }),
+      trigger: (id: string) =>
+        this.request<{ success: boolean; message: string }>(`/evaluation/auto-eval-tasks/${id}/trigger`, { method: 'POST' }),
+    },
+    results: {
+      calibrate: (id: string, data: { calibrated_score: number; calibrated_passed: boolean; calibration_note?: string }) =>
+        this.request<EvaluationResult>(`/evaluation/results/${id}/calibrate`, { method: 'PUT', body: JSON.stringify(data) }),
+    },
+  };
+
+  prompts = {
+    list: (projectId: string) =>
+      this.request<Prompt[]>(`/prompts?project_id=${projectId}`),
+    create: (data: { project_id: string; name: string; description?: string; content: string; config?: Record<string, unknown> }) =>
+      this.request<Prompt>('/prompts', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { content?: string; config?: Record<string, unknown>; description?: string }) =>
+      this.request<Prompt>(`/prompts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      this.request<void>(`/prompts/${id}`, { method: 'DELETE' }),
+    traces: (promptId: string) =>
+      this.request<{ traces: Trace[] }>(`/prompts/${promptId}/traces`),
+    versions: {
+      list: (promptId: string) =>
+        this.request<PromptVersion[]>(`/prompts/${promptId}/versions`),
+      get: (versionId: string) =>
+        this.request<PromptVersion>(`/prompts/versions/${versionId}`),
+    },
+    rollback: (promptId: string, versionId: string) =>
+      this.request<Prompt>(`/prompts/${promptId}/rollback/${versionId}`, { method: 'POST' }),
+    createVersion: (promptId: string, data: { content?: string; config?: Record<string, unknown>; description?: string; auto_regression?: boolean; regression_dataset_id?: string }) =>
+      this.request<{ version: PromptVersion; prompt: Prompt | null; regression_experiment: EvaluationExperiment | null }>(`/prompts/${promptId}/versions`, { method: 'POST', body: JSON.stringify(data) }),
+    optimize: (promptId: string, data: { experiment_id: string; model_config_id?: string }) =>
+      this.request<OptimizationSuggestion>(`/prompts/${promptId}/optimize`, { method: 'POST', body: JSON.stringify(data) }),
+    applyOptimization: (promptId: string, data: { optimized_prompt: string; description?: string }) =>
+      this.request<PromptVersion>(`/prompts/${promptId}/optimize/apply`, { method: 'POST', body: JSON.stringify(data) }),
+  };
+
+  playground = {
+    run: (data: { project_id: string; prompt_id?: string; prompt_version_id?: string; model: string; input: string; output?: string; latency_ms?: number; status?: string }) =>
+      this.request<PlaygroundRun>('/playground/run', { method: 'POST', body: JSON.stringify(data) }),
+    runs: (projectId: string, promptId?: string) =>
+      this.request<PlaygroundRun[]>(`/playground/runs?project_id=${projectId}${promptId ? `&prompt_id=${promptId}` : ''}`),
+    compare: (data: { project_id: string; prompt_id?: string; prompt_version_id?: string; input: string; model_config_ids: string[] }) =>
+      this.request<{ results: PlaygroundRun[]; summary: { totalModels: number; avgLatencyMs: number; fastestModel: string; slowestModel: string } }>('/playground/compare', { method: 'POST', body: JSON.stringify(data) }),
+  };
+
+  modelConfigs = {
+    list: (projectId: string) =>
+      this.request<ModelConfig[]>(`/model-configs?project_id=${projectId}`),
+    create: (data: { project_id: string; name: string; provider: string; model: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }) =>
+      this.request<ModelConfig>('/model-configs', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      this.request<void>(`/model-configs/${id}`, { method: 'DELETE' }),
+  };
+
+  feedbacks = {
+    create: (data: { projectId: string; sessionId?: string; messageId?: string; rating: number; reason?: string; comment?: string; dimensions?: Record<string, unknown> }) =>
+      this.request<{ feedback: UserFeedback }>('/feedbacks', { method: 'POST', body: JSON.stringify(data) }),
+    list: (projectId: string, params?: { rating?: number; limit?: number; offset?: number }) => {
+      const query = new URLSearchParams({ projectId });
+      if (params?.rating !== undefined) query.set('rating', String(params.rating));
+      if (params?.limit) query.set('limit', String(params.limit));
+      if (params?.offset) query.set('offset', String(params.offset));
+      return this.request<{ feedbacks: UserFeedback[] }>(`/feedbacks?${query.toString()}`);
+    },
+    stats: (projectId: string) =>
+      this.request<{ stats: FeedbackStats }>(`/feedbacks/stats?projectId=${projectId}`),
+  };
+}
+
+export interface Dataset {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  item_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetItem {
+  id: string;
+  dataset_id: string;
+  input: string;
+  expected_output: string | null;
+  metadata: string | null;
+  created_at: string;
+}
+
+export interface Evaluator {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  config: Record<string, unknown>;
+  model_config_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluationExperiment {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  dataset_id: string;
+  model_config: Record<string, unknown> | null;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  results_summary: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface EvaluationResult {
+  id: string;
+  experiment_id: string;
+  dataset_item_id: string;
+  evaluator_id: string | null;
+  output: string | null;
+  score: number | null;
+  passed: number;
+  details: Record<string, unknown> | null;
+  latency_ms: number | null;
+  created_at: string;
+}
+
+export interface Prompt {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  content: string;
+  config: Record<string, unknown> | null;
+  current_version_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PromptVersion {
+  id: string;
+  prompt_id: string;
+  content: string;
+  config: Record<string, unknown> | null;
+  version_number: number;
+  description: string | null;
+  created_at: string;
+}
+
+export interface PlaygroundRun {
+  id: string;
+  project_id: string;
+  prompt_id: string | null;
+  prompt_version_id: string | null;
+  model: string;
+  input: string;
+  output: string | null;
+  latency_ms: number | null;
+  status: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ModelConfig {
+  id: string;
+  project_id: string;
+  name: string;
+  provider: string;
+  model: string;
+  api_key: string | null;
+  base_url: string | null;
+  config: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface EvaluatorTemplate {
+  id: string;
+  name: string;
+  type: string;
+  description: string;
+  default_config: Record<string, unknown>;
+  applicable_dataset_types: string[];
+  criteria_options?: string[];
+}
+
+export interface ExperimentProgress {
+  experiment_id: string;
+  status: string;
+  total_items: number;
+  completed_items: number;
+  completion_rate: number;
+}
+
+export interface AutoEvalTask {
+  id: string;
+  project_id: string;
+  name: string;
+  dataset_id: string;
+  evaluator_id: string | null;
+  interval_hours: number;
+  sample_count: number;
+  trace_type_filter: string | null;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface User {
@@ -363,22 +671,108 @@ export interface ApiKey {
   key?: string;
 }
 
+/**
+ * Span 树节点接口（新格式）
+ */
+export interface SpanTreeNode {
+  spanId: string;
+  name: string;
+  traceType: string;
+  startedAt: string;
+  endedAt: string | null;
+  latencyMs: number | null;
+  status: string;
+  error: string | null;
+  input: unknown;
+  output: unknown;
+  attributes: unknown;
+  tokens: { prompt?: number; completion?: number; total?: number } | null;
+  costUsd: number | null;
+  children: SpanTreeNode[];
+}
+
+/**
+ * Span 统计信息接口（新格式）
+ */
+export interface SpanStats {
+  totalSpans: number;
+  totalLatencyMs: number;
+  totalTokens: { prompt: number; completion: number; total: number };
+  totalCostUsd: number;
+  errorCount: number;
+}
+
+/**
+ * Trace Tree 响应类型（兼容新旧格式）
+ */
+export type TraceTreeResponse =
+  | { trace: Trace; children: Trace[] }
+  | { trace: Trace; spans: SpanTreeNode[]; stats: SpanStats };
+
 export interface Trace {
   id: string;
   project_id: string;
   session_id?: string;
   agent_id?: string;
+  parent_trace_id?: string | null;
   trace_type: string;
   name: string;
   input?: unknown;
   output?: unknown;
   metadata?: unknown;
+  trace_id?: string | null;
+  span_id?: string | null;
+  parent_span_id?: string | null;
   started_at: string;
   ended_at?: string;
   latency_ms?: number;
   status: string;
   error?: string;
+  latest_eval_score?: number | null;
+  latest_eval_passed?: number | null;
+  prompt_id?: string | null;
+  prompt_version_id?: string | null;
   created_at: string;
+}
+
+export interface TraceEvalResult {
+  id: string;
+  trace_id: string;
+  evaluator: string | null;
+  score: number | null;
+  passed: number | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ToolCall {
+  id: string;
+  session_id: string;
+  message_id?: string | null;
+  tool_name: string;
+  input?: unknown;
+  output?: unknown;
+  status: string;
+  started_at: string;
+  ended_at?: string;
+  created_at: string;
+}
+
+export interface TimelineItem {
+  type: 'message' | 'trace' | 'tool_call';
+  id: string;
+  timestamp: string;
+  data: unknown;
+}
+
+export interface ObservationStats {
+  totalTraces: number;
+  totalSessions: number;
+  totalToolCalls: number;
+  traceTypeBreakdown: Array<{ type: string; count: number }>;
+  avgLatency: number;
+  successRate: number;
+  topTools: Array<{ name: string; count: number }>;
 }
 
 export interface Session {
@@ -412,6 +806,15 @@ export interface Stats {
   todayTraces: number;
 }
 
+export interface TrendPoint {
+  date: string;
+  traceCount: number;
+  tokenCount: number;
+  successRate: number;
+  errorCount: number;
+  avgLatency: number;
+}
+
 export interface Breakpoint {
   id: string;
   project_id: string;
@@ -419,6 +822,8 @@ export interface Breakpoint {
   type: 'keyword' | 'error' | 'latency' | 'custom';
   condition: string;
   enabled: boolean;
+  hit_threshold: number;
+  hit_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -509,6 +914,26 @@ export interface CostSuggestion {
   potentialSaving: number;
 }
 
+export interface UserFeedback {
+  id: string;
+  project_id: string;
+  session_id: string | null;
+  message_id: string | null;
+  rating: number;
+  reason: string | null;
+  comment: string | null;
+  dimensions: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface FeedbackStats {
+  total: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  positiveRate: number;
+}
+
 export interface Alert {
   id: string;
   projectId: string;
@@ -550,6 +975,20 @@ export interface AlertHistory {
   };
   message: string;
   triggeredAt: string;
+}
+
+export interface OptimizationSuggestion {
+  original_prompt: string;
+  optimized_prompt: string;
+  changes: string[];
+  reasoning: string;
+  low_score_samples: Array<{
+    input: string;
+    output: string;
+    expected_output: string;
+    score: number;
+    reasoning?: string;
+  }>;
 }
 
 export const api = new ApiClient();

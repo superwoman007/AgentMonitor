@@ -1,5 +1,6 @@
 import { query, queryOne } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config.js';
 
 export interface Breakpoint {
   id: string;
@@ -8,6 +9,8 @@ export interface Breakpoint {
   type: 'keyword' | 'error' | 'latency' | 'custom';
   condition: string;
   enabled: boolean;
+  hit_threshold: number;
+  hit_count: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -18,6 +21,7 @@ export interface BreakpointCreateData {
   type: 'keyword' | 'error' | 'latency' | 'custom';
   condition: string;
   enabled?: boolean;
+  hit_threshold?: number;
 }
 
 export interface BreakpointUpdateData {
@@ -25,6 +29,8 @@ export interface BreakpointUpdateData {
   type?: 'keyword' | 'error' | 'latency' | 'custom';
   condition?: string;
   enabled?: boolean;
+  hit_threshold?: number;
+  hit_count?: number;
 }
 
 export interface CheckContext {
@@ -38,11 +44,12 @@ export interface CheckContext {
 export async function createBreakpoint(data: BreakpointCreateData): Promise<Breakpoint> {
   const id = uuidv4();
   
+  const hitThreshold = data.hit_threshold ?? 0;
   const breakpoint = await queryOne<Breakpoint>(
-    `INSERT INTO breakpoints (id, project_id, name, type, condition, enabled)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO breakpoints (id, project_id, name, type, condition, enabled, hit_threshold, hit_count)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [id, data.projectId, data.name, data.type, data.condition, data.enabled !== false ? 1 : 0]
+    [id, data.projectId, data.name, data.type, data.condition, data.enabled !== false ? 1 : 0, hitThreshold, 0]
   );
   
   if (!breakpoint) {
@@ -53,14 +60,23 @@ export async function createBreakpoint(data: BreakpointCreateData): Promise<Brea
 }
 
 export async function getBreakpointById(id: string): Promise<Breakpoint | null> {
-  return queryOne<Breakpoint>('SELECT * FROM breakpoints WHERE id = $1', [id]);
+  const row = await queryOne<Breakpoint>('SELECT * FROM breakpoints WHERE id = $1', [id]);
+  return row ? normalizeBreakpoint(row) : null;
+}
+
+function normalizeBreakpoint(bp: Breakpoint): Breakpoint {
+  if (bp.enabled !== undefined) bp.enabled = !!bp.enabled;
+  if (bp.hit_threshold !== undefined) bp.hit_threshold = Number(bp.hit_threshold) || 0;
+  if (bp.hit_count !== undefined) bp.hit_count = Number(bp.hit_count) || 0;
+  return bp;
 }
 
 export async function getBreakpointsByProject(projectId: string): Promise<Breakpoint[]> {
-  return query<Breakpoint>(
+  const rows = await query<Breakpoint>(
     'SELECT * FROM breakpoints WHERE project_id = $1 ORDER BY created_at DESC',
     [projectId]
   );
+  return rows.map(normalizeBreakpoint);
 }
 
 export async function updateBreakpoint(id: string, data: BreakpointUpdateData): Promise<Breakpoint | null> {
@@ -91,12 +107,25 @@ export async function updateBreakpoint(id: string, data: BreakpointUpdateData): 
     values.push(data.enabled);
     paramIndex++;
   }
+
+  if (data.hit_threshold !== undefined) {
+    fields.push(`hit_threshold = $${paramIndex}`);
+    values.push(data.hit_threshold);
+    paramIndex++;
+  }
+
+  if (data.hit_count !== undefined) {
+    fields.push(`hit_count = $${paramIndex}`);
+    values.push(data.hit_count);
+    paramIndex++;
+  }
   
   if (fields.length === 0) {
     return getBreakpointById(id);
   }
   
-  fields.push(`updated_at = NOW()`);
+  const nowExpr = config.dbType === 'sqlite' ? "datetime('now')" : 'NOW()';
+  fields.push(`updated_at = ${nowExpr}`);
   values.push(id);
   
   return queryOne<Breakpoint>(
@@ -116,7 +145,7 @@ export async function deleteBreakpoint(id: string): Promise<boolean> {
 
 export async function toggleBreakpoint(id: string): Promise<Breakpoint | null> {
   return queryOne<Breakpoint>(
-    `UPDATE breakpoints SET enabled = NOT enabled, updated_at = NOW() WHERE id = $1 RETURNING *`,
+    `UPDATE breakpoints SET enabled = NOT enabled, updated_at = ${config.dbType === 'sqlite' ? "datetime('now')" : 'NOW()'} WHERE id = $1 RETURNING *`,
     [id]
   );
 }
@@ -127,13 +156,13 @@ export async function checkBreakpoints(projectId: string, context: CheckContext)
   const triggered: Breakpoint[] = [];
   
   for (const bp of enabledBreakpoints) {
-    let isTriggered = false;
+    let conditionMatched = false;
     
     switch (bp.type) {
       case 'keyword':
         if (context.content) {
           const keywords = bp.condition.split(',').map(k => k.trim().toLowerCase());
-          isTriggered = keywords.some(kw => context.content!.toLowerCase().includes(kw));
+          conditionMatched = keywords.some(kw => context.content!.toLowerCase().includes(kw));
         }
         break;
         
@@ -141,9 +170,9 @@ export async function checkBreakpoints(projectId: string, context: CheckContext)
         if (context.error) {
           try {
             const pattern = new RegExp(bp.condition, 'i');
-            isTriggered = pattern.test(context.error);
+            conditionMatched = pattern.test(context.error);
           } catch {
-            isTriggered = context.error.toLowerCase().includes(bp.condition.toLowerCase());
+            conditionMatched = context.error.toLowerCase().includes(bp.condition.toLowerCase());
           }
         }
         break;
@@ -152,7 +181,7 @@ export async function checkBreakpoints(projectId: string, context: CheckContext)
         if (context.latencyMs !== undefined) {
           const threshold = parseInt(bp.condition, 10);
           if (!isNaN(threshold)) {
-            isTriggered = context.latencyMs > threshold;
+            conditionMatched = context.latencyMs > threshold;
           }
         }
         break;
@@ -160,15 +189,26 @@ export async function checkBreakpoints(projectId: string, context: CheckContext)
       case 'custom':
         try {
           const evalFunc = new Function('context', `return ${bp.condition}`);
-          isTriggered = evalFunc(context);
+          conditionMatched = evalFunc(context);
         } catch (e) {
           console.error('Failed to evaluate custom breakpoint condition:', e);
         }
         break;
     }
     
-    if (isTriggered) {
-      triggered.push(bp);
+    if (conditionMatched) {
+      const newHitCount = bp.hit_count + 1;
+      // Check hit_threshold: if > 0, need N hits to trigger; if 0, trigger immediately
+      const shouldTrigger = bp.hit_threshold <= 0 || newHitCount >= bp.hit_threshold;
+      
+      if (shouldTrigger) {
+        triggered.push(bp);
+        // Reset hit_count after trigger
+        await updateBreakpoint(bp.id, { hit_count: 0 });
+      } else {
+        // Increment hit_count
+        await updateBreakpoint(bp.id, { hit_count: newHitCount });
+      }
     }
   }
   

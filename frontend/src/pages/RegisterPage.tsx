@@ -18,12 +18,12 @@ export function RegisterPage() {
     setLocalError('');
 
     if (password !== confirmPassword) {
-      setLocalError('Passwords do not match');
+      setLocalError(t.passwordsNoMatch);
       return;
     }
 
     if (password.length < 6) {
-      setLocalError('Password must be at least 6 characters');
+      setLocalError(t.passwordTooShort);
       return;
     }
 
@@ -31,7 +31,7 @@ export function RegisterPage() {
       await register(email, password, name || undefined);
       navigate('/dashboard');
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Registration failed');
+      setLocalError(err instanceof Error ? err.message : t.registrationFailed);
     }
   };
 
@@ -48,7 +48,7 @@ export function RegisterPage() {
               onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
-              {lang === 'zh' ? 'EN' : '中文'}
+              {lang === 'zh' ? t.langEn : t.langZh}
             </button>
           </div>
 
@@ -62,7 +62,7 @@ export function RegisterPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="John Doe"
+                placeholder={t.nameExample}
               />
             </div>
 
@@ -76,7 +76,7 @@ export function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="user@example.com"
+                placeholder={t.emailExample}
               />
             </div>
 

@@ -25,6 +25,7 @@ export function DebuggingPage() {
     name: '',
     type: 'keyword' as 'keyword' | 'error' | 'latency',
     condition: '',
+    hit_threshold: 0,
   });
 
   const loadData = useCallback(async () => {
@@ -50,7 +51,7 @@ export function DebuggingPage() {
     try {
       await createBreakpoint(currentProject.id, newBreakpoint);
       setShowCreateModal(false);
-      setNewBreakpoint({ name: '', type: 'keyword', condition: '' });
+      setNewBreakpoint({ name: '', type: 'keyword', condition: '', hit_threshold: 0 });
     } catch (error) {
       console.error('Failed to create breakpoint:', error);
     }
@@ -84,6 +85,11 @@ export function DebuggingPage() {
                   <p className="font-medium">{bp.name}</p>
                   <p className="text-sm text-gray-500">
                     {bp.type}: {bp.condition}
+                    {bp.hit_threshold > 0 && (
+                      <span className="ml-2 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded">
+                        {t.hitThreshold} {bp.hit_count}/{bp.hit_threshold}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -180,6 +186,18 @@ export function DebuggingPage() {
                       'e.g., "5000" (ms)'
                     }
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">{t.hitThreshold}</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={newBreakpoint.hit_threshold}
+                    onChange={(e) => setNewBreakpoint({ ...newBreakpoint, hit_threshold: Number(e.target.value) })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder={t.hitThresholdHint}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">{t.hitThresholdHint}</p>
                 </div>
                 <div className="flex gap-2 justify-end">
                   <button

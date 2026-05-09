@@ -18,6 +18,7 @@ class SDKConfig:
     always_capture: List[Literal["error", "breakpoint", "session"]] = field(
         default_factory=lambda: ["error", "breakpoint"]
     )
+    enable_span_write: bool = True
 
 
 @dataclass
@@ -106,3 +107,22 @@ class SnapshotState:
 
 # 断点暂停处理器类型
 BreakpointPauseHandler = Callable[[Breakpoint, BreakpointCheckContext, SnapshotState], Awaitable[bool]]
+
+
+@dataclass
+class SpanContext:
+    """Span 上下文，用于追踪单个操作的执行"""
+    span_id: str
+    trace_id: str
+    name: str
+    trace_type: str = "span"
+    started_at: str = ""
+    ended_at: Optional[str] = None
+    latency_ms: Optional[float] = None
+    parent_span_id: Optional[str] = None
+    input: Any = None
+    output: Any = None
+    attributes: Optional[Dict[str, Any]] = None
+    status: Optional[str] = None
+    error: Optional[str] = None
+    session_id: Optional[str] = None

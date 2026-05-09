@@ -11,7 +11,7 @@ export interface Snapshot {
   created_at: Date;
 }
 
-type SnapshotRow = Omit<Snapshot, 'state' | 'timestamp' | 'created_at'> & {
+export type SnapshotRow = Omit<Snapshot, 'state' | 'timestamp' | 'created_at'> & {
   state: unknown;
   timestamp: unknown;
   created_at: unknown;
@@ -121,7 +121,7 @@ export async function getSnapshotsByProject(projectId: string): Promise<Snapshot
   return result.map(normalizeSnapshot);
 }
 
-function parseJsonIfString(value: unknown): unknown {
+export function parseJsonIfString(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   if (trimmed.length === 0) return value;
@@ -133,7 +133,7 @@ function parseJsonIfString(value: unknown): unknown {
   }
 }
 
-function parseDateIfString(value: unknown): Date {
+export function parseDateIfString(value: unknown): Date {
   if (value instanceof Date) return value;
   if (typeof value === 'string') {
     const d = new Date(value);
@@ -142,7 +142,7 @@ function parseDateIfString(value: unknown): Date {
   return new Date();
 }
 
-function normalizeSnapshot(row: SnapshotRow): Snapshot {
+export function normalizeSnapshot(row: SnapshotRow): Snapshot {
   let state = parseJsonIfString(row.state);
   if (typeof state === 'string') {
     const twice = parseJsonIfString(state);

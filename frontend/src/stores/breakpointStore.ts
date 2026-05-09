@@ -11,12 +11,14 @@ interface BreakpointState {
     type: 'keyword' | 'error' | 'latency' | 'custom';
     condition: string;
     enabled?: boolean;
+    hit_threshold?: number;
   }) => Promise<Breakpoint>;
   updateBreakpoint: (id: string, data: {
     name?: string;
     type?: 'keyword' | 'error' | 'latency' | 'custom';
     condition?: string;
     enabled?: boolean;
+    hit_threshold?: number;
   }) => Promise<void>;
   deleteBreakpoint: (id: string) => Promise<void>;
   toggleBreakpoint: (id: string) => Promise<void>;

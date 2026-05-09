@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { RefreshButton } from '../components/RefreshButton';
 import { useTranslation } from '../App';
-import { api, Session, Message, Trace } from '../api';
+import { api, Session, Message, Trace, TimelineItem } from '../api';
 
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -14,18 +14,21 @@ export function SessionDetailPage() {
   const [traces, setTraces] = useState<Trace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'timeline' | 'chat'>('timeline');
+  const [viewMode, setViewMode] = useState<'timeline' | 'chat' | 'unified' | 'react' | 'agentLoop'>('timeline');
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   const loadData = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
     try {
-      const [{ session }, { messages }] = await Promise.all([
+      const [{ session }, { messages }, { timeline: tl }] = await Promise.all([
         api.sessions.get(id),
         api.sessions.messages.list(id, { limit: 200 }),
+        api.sessions.timeline(id),
       ]);
       setSession(session);
       setMessages(messages);
+      setTimeline(tl);
       if (session.project_id) {
         const { traces } = await api.traces.list(session.project_id, { sessionId: id, limit: 100 });
         setTraces(traces);
@@ -57,6 +60,8 @@ export function SessionDetailPage() {
     return `${(ms / 60000).toFixed(1)}m`;
   };
 
+  const [exporting, setExporting] = useState(false);
+
   const handleEndSession = async () => {
     if (!id || !session) return;
     try {
@@ -64,6 +69,20 @@ export function SessionDetailPage() {
       setSession(updated);
     } catch (error) {
       console.error('Failed to end session:', error);
+    }
+  };
+
+  const handleExportDataset = async () => {
+    if (!id) return;
+    setExporting(true);
+    try {
+      const { dataset, itemCount } = await api.sessions.exportDataset(id);
+      alert(`${t.exportDatasetSuccess}: ${(dataset as any).name} (${itemCount} items)`);
+    } catch (error: any) {
+      console.error('Failed to export dataset:', error);
+      alert(error.message || t.exportFailed);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -99,6 +118,50 @@ export function SessionDetailPage() {
     return `${(latency / 1000).toFixed(2)}s`;
   };
 
+  // Build Agent Loop cycles from timeline
+  const buildAgentLoops = () => {
+    const loops: Array<{
+      id: number;
+      observation: TimelineItem | null;
+      thought: TimelineItem | null;
+      actions: TimelineItem[];
+    }> = [];
+    let currentLoop: {
+      id: number;
+      observation: TimelineItem | null;
+      thought: TimelineItem | null;
+      actions: TimelineItem[];
+    } | null = null;
+
+    for (const item of timeline) {
+      if (item.type === 'message' && (item.data as any).role === 'user') {
+        // New loop starts with user observation
+        if (currentLoop) {
+          loops.push(currentLoop);
+        }
+        currentLoop = { id: loops.length + 1, observation: item, thought: null, actions: [] };
+      } else if (item.type === 'message' && (item.data as any).role === 'assistant') {
+        // Assistant message is the thought
+        if (!currentLoop) {
+          currentLoop = { id: loops.length + 1, observation: null, thought: item, actions: [] };
+        } else {
+          currentLoop.thought = item;
+        }
+      } else if (item.type === 'tool_call' || item.type === 'trace') {
+        // Tool calls and traces are actions
+        if (!currentLoop) {
+          currentLoop = { id: loops.length + 1, observation: null, thought: null, actions: [item] };
+        } else {
+          currentLoop.actions.push(item);
+        }
+      }
+    }
+    if (currentLoop) {
+      loops.push(currentLoop);
+    }
+    return loops;
+  };
+
   if (isLoading) {
     return (
       <Layout>
@@ -131,6 +194,13 @@ export function SessionDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             <RefreshButton onRefresh={handleRefresh} />
+            <button
+              onClick={handleExportDataset}
+              disabled={exporting}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50"
+            >
+              {exporting ? '...' : t.exportDataset}
+            </button>
             {session.status === 'active' && (
               <button
                 onClick={handleEndSession}
@@ -203,7 +273,7 @@ export function SessionDetailPage() {
                     viewMode === 'timeline' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  Timeline
+                  {t.messages}
                 </button>
                 <button
                   onClick={() => setViewMode('chat')}
@@ -211,122 +281,398 @@ export function SessionDetailPage() {
                     viewMode === 'chat' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
                   }`}
                 >
-                  Chat
+                  {t.chat}
+                </button>
+                <button
+                  onClick={() => setViewMode('unified')}
+                  className={`px-3 py-1 text-xs rounded ${
+                    viewMode === 'unified' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {t.timeline}
+                </button>
+                <button
+                  onClick={() => setViewMode('react')}
+                  className={`px-3 py-1 text-xs rounded ${
+                    viewMode === 'react' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {t.reactFlow}
+                </button>
+                <button
+                  onClick={() => setViewMode('agentLoop')}
+                  className={`px-3 py-1 text-xs rounded ${
+                    viewMode === 'agentLoop' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {t.agentLoop}
                 </button>
               </div>
             </div>
-            {messages.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
-            ) : viewMode === 'timeline' ? (
-              <div className="relative">
-                <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
-                <div className="space-y-4">
-                  {messages.map((msg, idx) => {
-                    const metadata = getMessageMetadata(msg);
-                    const isExpanded = expandedMessages.has(msg.id);
-                    return (
-                      <div key={msg.id} className="relative pl-10">
+            {viewMode === 'unified' && (
+              timeline.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                  <div className="space-y-4">
+                    {timeline.map((item, idx) => (
+                      <div key={`${item.type}-${item.id}`} className="relative pl-10">
                         <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${
-                          msg.role === 'user' ? 'bg-blue-500' : 
-                          msg.role === 'assistant' ? 'bg-green-500' : 'bg-yellow-500'
+                          item.type === 'message' ? 'bg-blue-500' :
+                          item.type === 'trace' ? 'bg-green-500' : 'bg-orange-500'
                         }`}>
                           <span className="text-white text-xs">{idx + 1}</span>
                         </div>
                         <div className="bg-white border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                msg.role === 'user'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : msg.role === 'assistant'
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {msg.role}
-                              </span>
-                              <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
-                              {metadata.model && (
-                                <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              item.type === 'message' ? 'bg-blue-100 text-blue-700' :
+                              item.type === 'trace' ? 'bg-green-100 text-green-700' :
+                              'bg-orange-100 text-orange-700'
+                            }`}>
+                              {item.type === 'message' ? (item.data as any).role : item.type}
+                            </span>
+                            <span className="text-xs text-gray-400">{formatTime(item.timestamp)}</span>
+                          </div>
+                          {item.type === 'message' && (
+                            <div className="text-sm whitespace-pre-wrap">{(item.data as any).content}</div>
+                          )}
+                          {item.type === 'trace' && (
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium">{(item.data as any).name}</div>
+                              <div className="text-xs text-gray-500">{(item.data as any).trace_type}</div>
+                              {(item.data as any).latency_ms && (
+                                <div className="text-xs text-orange-600">{formatLatency((item.data as any).latency_ms)}</div>
                               )}
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-gray-500">
-                              {formatTokens(metadata.tokens) && (
-                                <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
-                                  {formatTokens(metadata.tokens)}
-                                </span>
+                          )}
+                          {item.type === 'tool_call' && (
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium">{(item.data as any).tool_name}</div>
+                              {(item.data as any).input && (
+                                <pre className="text-xs bg-gray-50 p-2 rounded overflow-auto max-h-24">
+                                  {JSON.stringify((item.data as any).input, null, 2)}
+                                </pre>
                               )}
-                              {formatLatency(metadata.latency) && (
-                                <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">
-                                  {formatLatency(metadata.latency)}
-                                </span>
+                              {(item.data as any).output && (
+                                <pre className="text-xs bg-green-50 p-2 rounded overflow-auto max-h-24">
+                                  {JSON.stringify((item.data as any).output, null, 2)}
+                                </pre>
                               )}
                             </div>
-                          </div>
-                          <div 
-                            className={`text-sm whitespace-pre-wrap ${!isExpanded && msg.content.length > 200 ? 'max-h-32 overflow-hidden relative' : ''}`}
-                          >
-                            {msg.content}
-                            {!isExpanded && msg.content.length > 200 && (
-                              <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent"></div>
-                            )}
-                          </div>
-                          {msg.content.length > 200 && (
-                            <button
-                              onClick={() => toggleMessage(msg.id)}
-                              className="text-blue-600 text-xs mt-2 hover:underline"
-                            >
-                              {isExpanded ? 'Show less' : 'Show more'}
-                            </button>
                           )}
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
+
+            {viewMode === 'react' && (
+              timeline.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
+              ) : (
+                <div className="space-y-6">
+                  {(() => {
+                    // Parse timeline into ReAct steps
+                    const steps = timeline.map((item) => {
+                      if (item.type === 'message') {
+                        const role = (item.data as any).role;
+                        if (role === 'assistant') {
+                          return {
+                            type: 'thought' as const,
+                            title: t.thought,
+                            content: (item.data as any).content || '',
+                            timestamp: item.timestamp,
+                            status: 'success' as const,
+                          };
+                        }
+                        return {
+                          type: 'observation' as const,
+                          title: t.observation,
+                          content: (item.data as any).content || '',
+                          timestamp: item.timestamp,
+                          status: 'success' as const,
+                        };
+                      }
+                      if (item.type === 'tool_call') {
+                        const data = item.data as any;
+                        return {
+                          type: 'action' as const,
+                          title: `${t.action}: ${data.tool_name || ''}`,
+                          content: data.input ? JSON.stringify(data.input, null, 2) : '',
+                          output: data.output ? JSON.stringify(data.output, null, 2) : '',
+                          timestamp: item.timestamp,
+                          status: data.status === 'failed' ? ('failed' as const) : ('success' as const),
+                        };
+                      }
+                      if (item.type === 'trace') {
+                        const data = item.data as any;
+                        if (data.trace_type === 'tool') {
+                          return {
+                            type: 'action' as const,
+                            title: `${t.action}: ${data.name || ''}`,
+                            content: data.input ? JSON.stringify(data.input, null, 2) : '',
+                            output: data.output ? JSON.stringify(data.output, null, 2) : '',
+                            timestamp: item.timestamp,
+                            status: data.status === 'failed' || data.error ? ('failed' as const) : ('success' as const),
+                          };
+                        }
+                        return {
+                          type: 'thought' as const,
+                          title: t.thought,
+                          content: data.output ? String(data.output) : data.input ? String(data.input) : '',
+                          timestamp: item.timestamp,
+                          status: data.error ? ('failed' as const) : ('success' as const),
+                        };
+                      }
+                      return null;
+                    }).filter(Boolean) as Array<{
+                      type: 'thought' | 'action' | 'observation';
+                      title: string;
+                      content: string;
+                      output?: string;
+                      timestamp: string;
+                      status: 'success' | 'failed';
+                    }>;
+
+                    return (
+                      <>
+                        {steps.map((step, idx) => (
+                          <div key={idx} className="relative">
+                            {idx > 0 && (
+                              <div className="flex justify-center -mt-2 mb-2">
+                                <div className="w-0.5 h-6 bg-gray-300"></div>
+                              </div>
+                            )}
+                            <div className={`border rounded-lg p-4 ${
+                              step.status === 'failed' ? 'border-red-300 bg-red-50' :
+                              step.type === 'thought' ? 'border-purple-200 bg-purple-50' :
+                              step.type === 'action' ? 'border-blue-200 bg-blue-50' :
+                              'border-green-200 bg-green-50'
+                            }`}>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                    step.status === 'failed' ? 'bg-red-100 text-red-700' :
+                                    step.type === 'thought' ? 'bg-purple-100 text-purple-700' :
+                                    step.type === 'action' ? 'bg-blue-100 text-blue-700' :
+                                    'bg-green-100 text-green-700'
+                                  }`}>
+                                    {step.title}
+                                  </span>
+                                  {step.status === 'failed' && (
+                                    <span className="text-xs text-red-600 font-medium">{t.failed}</span>
+                                  )}
+                                </div>
+                                <span className="text-xs text-gray-400">{formatTime(step.timestamp)}</span>
+                              </div>
+                              <div className="text-sm whitespace-pre-wrap font-mono text-xs">{step.content}</div>
+                              {step.output && (
+                                <div className="mt-2 pt-2 border-t border-gray-200">
+                                  <div className="text-xs text-gray-500 mb-1">{t.output}:</div>
+                                  <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-32">{step.output}</pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    );
+                  })()}
+                </div>
+              )
+            )}
+
+            {viewMode === 'agentLoop' && (
+              timeline.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
+              ) : (
+                <div className="space-y-8">
+                  {buildAgentLoops().map((loop) => (
+                    <div key={loop.id} className="border-2 border-purple-100 rounded-xl p-4 bg-purple-50/30">
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                          Loop #{loop.id}
+                        </span>
+                      </div>
+                      <div className="space-y-4">
+                        {/* Observation */}
+                        {loop.observation && (
+                          <div className="border rounded-lg p-3 bg-green-50 border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">{t.observation}</span>
+                              <span className="text-xs text-gray-400">{formatTime(loop.observation.timestamp)}</span>
+                            </div>
+                            <div className="text-sm whitespace-pre-wrap">{(loop.observation.data as any).content}</div>
+                          </div>
+                        )}
+                        {/* Thought */}
+                        {loop.thought && (
+                          <div className="border rounded-lg p-3 bg-purple-50 border-purple-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{t.thought}</span>
+                              <span className="text-xs text-gray-400">{formatTime(loop.thought.timestamp)}</span>
+                            </div>
+                            <div className="text-sm whitespace-pre-wrap">{(loop.thought.data as any).content}</div>
+                          </div>
+                        )}
+                        {/* Actions */}
+                        {loop.actions.length > 0 && (
+                          <div className="space-y-2">
+                            {loop.actions.map((action, aidx) => (
+                              <div key={`${loop.id}-action-${aidx}`} className="border rounded-lg p-3 bg-blue-50 border-blue-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{t.action}</span>
+                                  <span className="text-xs text-gray-400">{formatTime(action.timestamp)}</span>
+                                </div>
+                                {action.type === 'tool_call' && (
+                                  <div className="space-y-1">
+                                    <div className="text-sm font-medium">{(action.data as any).tool_name}</div>
+                                    {(action.data as any).input && (
+                                      <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-24">{JSON.stringify((action.data as any).input, null, 2)}</pre>
+                                    )}
+                                    {(action.data as any).output && (
+                                      <pre className="text-xs bg-green-50 p-2 rounded border overflow-auto max-h-24">{JSON.stringify((action.data as any).output, null, 2)}</pre>
+                                    )}
+                                  </div>
+                                )}
+                                {action.type === 'trace' && (
+                                  <div className="space-y-1">
+                                    <div className="text-sm font-medium">{(action.data as any).name}</div>
+                                    <div className="text-xs text-gray-500">{(action.data as any).trace_type}</div>
+                                    {(action.data as any).latency_ms && (
+                                      <div className="text-xs text-orange-600">{formatLatency((action.data as any).latency_ms)}</div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {viewMode !== 'unified' && viewMode !== 'react' && viewMode !== 'agentLoop' && (
+              messages.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
+              ) : viewMode === 'timeline' ? (
+                <div className="relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200"></div>
+                  <div className="space-y-4">
+                    {messages.map((msg, idx) => {
+                      const metadata = getMessageMetadata(msg);
+                      const isExpanded = expandedMessages.has(msg.id);
+                      return (
+                        <div key={msg.id} className="relative pl-10">
+                          <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${
+                            msg.role === 'user' ? 'bg-blue-500' : 
+                            msg.role === 'assistant' ? 'bg-green-500' : 'bg-yellow-500'
+                          }`}>
+                            <span className="text-white text-xs">{idx + 1}</span>
+                          </div>
+                          <div className="bg-white border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  msg.role === 'user'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : msg.role === 'assistant'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-yellow-100 text-yellow-700'
+                                }`}>
+                                  {msg.role}
+                                </span>
+                                <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
+                                {metadata.model && (
+                                  <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-gray-500">
+                                {formatTokens(metadata.tokens) && (
+                                  <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">
+                                    {formatTokens(metadata.tokens)}
+                                  </span>
+                                )}
+                                {formatLatency(metadata.latency) && (
+                                  <span className="bg-orange-50 text-orange-700 px-2 py-0.5 rounded">
+                                    {formatLatency(metadata.latency)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div 
+                              className={`text-sm whitespace-pre-wrap ${!isExpanded && msg.content.length > 200 ? 'max-h-32 overflow-hidden relative' : ''}`}
+                            >
+                              {msg.content}
+                              {!isExpanded && msg.content.length > 200 && (
+                                <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-white to-transparent"></div>
+                              )}
+                            </div>
+                            {msg.content.length > 200 && (
+                              <button
+                                onClick={() => toggleMessage(msg.id)}
+                                className="text-blue-600 text-xs mt-2 hover:underline"
+                              >
+                                {isExpanded ? t.showLess : t.showMore}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {messages.map((msg) => {
+                    const metadata = getMessageMetadata(msg);
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`p-4 rounded-lg ${
+                          msg.role === 'user'
+                            ? 'bg-blue-50 ml-0 mr-12'
+                            : msg.role === 'assistant'
+                            ? 'bg-gray-50 ml-12 mr-0'
+                            : 'bg-yellow-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              msg.role === 'user'
+                                ? 'bg-blue-100 text-blue-700'
+                                : msg.role === 'assistant'
+                                ? 'bg-gray-200 text-gray-700'
+                                : 'bg-yellow-100 text-yellow-700'
+                            }`}
+                          >
+                            {msg.role}
+                          </span>
+                          <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
+                          {metadata.model && (
+                            <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
+                          )}
+                          {metadata.tokens && (
+                            <span className="text-xs text-purple-600">{formatTokens(metadata.tokens)}</span>
+                          )}
+                          {metadata.latency && (
+                            <span className="text-xs text-orange-600">{formatLatency(metadata.latency)}</span>
+                          )}
+                        </div>
+                        <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((msg) => {
-                  const metadata = getMessageMetadata(msg);
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`p-4 rounded-lg ${
-                        msg.role === 'user'
-                          ? 'bg-blue-50 ml-0 mr-12'
-                          : msg.role === 'assistant'
-                          ? 'bg-gray-50 ml-12 mr-0'
-                          : 'bg-yellow-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                            msg.role === 'user'
-                              ? 'bg-blue-100 text-blue-700'
-                              : msg.role === 'assistant'
-                              ? 'bg-gray-200 text-gray-700'
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}
-                        >
-                          {msg.role}
-                        </span>
-                        <span className="text-xs text-gray-400">{formatTime(msg.timestamp)}</span>
-                        {metadata.model && (
-                          <span className="text-xs text-gray-500 font-mono">{metadata.model}</span>
-                        )}
-                        {metadata.tokens && (
-                          <span className="text-xs text-purple-600">{formatTokens(metadata.tokens)}</span>
-                        )}
-                        {metadata.latency && (
-                          <span className="text-xs text-orange-600">{formatLatency(metadata.latency)}</span>
-                        )}
-                      </div>
-                      <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              )
             )}
           </div>
         </div>

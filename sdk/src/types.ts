@@ -8,6 +8,7 @@ export interface SDKConfig {
   enableBreakpoints?: boolean;
   sampleRate?: number; // 0-1，采样率，默认 1.0（全量）
   alwaysCapture?: Array<'error' | 'breakpoint' | 'session'>; // 强制上报的事件类型
+  enableSpanWrite?: boolean; // 是否启用 Span 级追踪写入
 }
 
 export interface SessionData {
@@ -171,4 +172,29 @@ export interface DecisionWithOptions {
     metadata: Record<string, unknown> | null;
     created_at: string;
   }>;
+}
+
+// P0-01: Span 级追踪类型定义
+
+export interface SpanContext {
+  spanId: string;
+  traceId: string;
+  parentSpanId?: string;
+  name: string;
+  traceType: string;
+  startedAt: string;
+  endedAt?: string;
+  latencyMs?: number;
+  input?: unknown;
+  output?: unknown;
+  attributes?: Record<string, unknown>;
+  status?: string;
+  error?: string;
+  sessionId?: string | null;
+}
+
+export interface SpanOptions {
+  input?: unknown;
+  attributes?: Record<string, unknown>;
+  sessionId?: string | null;
 }

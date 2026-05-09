@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Layout } from '../components/Layout';
 import { StatsCards } from '../components/StatsCards';
+import { TrendChart } from '../components/TrendChart';
 import { TraceList } from '../components/TraceList';
 import { TraceDetail } from '../components/TraceDetail';
 import { ConnectionStatus, ConnectionStatusType } from '../components/ConnectionStatus';
@@ -9,16 +10,18 @@ import { useAuthStore } from '../stores/authStore';
 import { useProjectStore } from '../stores/projectStore';
 import { useTraceStore } from '../stores/traceStore';
 import { useTranslation } from '../App';
-import { Trace } from '../api';
+import { api, Trace, TrendPoint } from '../api';
 
 export function DashboardPage() {
   const { token, user, fetchUser } = useAuthStore();
   const { projects, currentProject, fetchProjects, ensureDefaultProject } = useProjectStore();
   const { traces, selectedTrace, stats, fetchTraces, fetchStats, selectTrace, addTrace } = useTraceStore();
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const { t } = useTranslation();
   const [wsStatus, setWsStatus] = useState<ConnectionStatusType>('loading');
   const wsRef = useRef<WebSocket | null>(null);
   const initializedRef = useRef(false);
+  const lastTraceTimeRef = useRef<number>(0);
 
   useEffect(() => {
     if (token && !initializedRef.current) {
@@ -44,8 +47,24 @@ export function DashboardPage() {
     if (currentProject) {
       fetchTraces(currentProject.id);
       fetchStats(currentProject.id);
+      api.stats.trend(currentProject.id, 7).then((res) => setTrendData(res.trend)).catch(() => {});
     }
   }, [currentProject?.id, fetchTraces, fetchStats]);
+
+  // Update SDK connection status when traces change
+  useEffect(() => {
+    if (traces.length > 0) {
+      const now = Date.now();
+      const fiveMinutes = 5 * 60 * 1000;
+      const mostRecent = new Date(traces[0].started_at).getTime();
+      if (now - mostRecent < fiveMinutes) {
+        lastTraceTimeRef.current = mostRecent;
+        if (wsStatus === 'waiting' || wsStatus === 'loading') {
+          setWsStatus('connected');
+        }
+      }
+    }
+  }, [traces, wsStatus]);
 
   useEffect(() => {
     if (!currentProject) return;
@@ -64,7 +83,15 @@ export function DashboardPage() {
 
       ws.onopen = () => {
         console.log('WebSocket connected');
-        setWsStatus('connected');
+        // Check if we have recent trace data to determine SDK status
+        const now = Date.now();
+        const fiveMinutes = 5 * 60 * 1000;
+        const hasRecentTrace = traces.length > 0 && (now - new Date(traces[0].started_at).getTime() < fiveMinutes);
+        if (hasRecentTrace || lastTraceTimeRef.current > 0) {
+          setWsStatus('connected');
+        } else {
+          setWsStatus('waiting');
+        }
         try {
           ws.send(JSON.stringify({ type: 'subscribe', projectId: currentProject.id }));
         } catch {
@@ -75,6 +102,8 @@ export function DashboardPage() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'new_trace' && data.data) {
+            lastTraceTimeRef.current = Date.now();
+            setWsStatus('connected');
             addTrace(data.data as Trace);
           }
           if (data.type === 'init' && data.data?.traces) {
@@ -123,6 +152,12 @@ export function DashboardPage() {
         fetchTraces(currentProject.id),
         fetchStats(currentProject.id),
       ]);
+      try {
+        const res = await api.stats.trend(currentProject.id, 7);
+        setTrendData(res.trend);
+      } catch (e) {
+        console.error('Failed to fetch trend:', e);
+      }
     }
   }, [currentProject, fetchTraces, fetchStats]);
 
@@ -137,6 +172,8 @@ export function DashboardPage() {
       </div>
 
       <StatsCards stats={stats} />
+
+      <TrendChart data={trendData} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TraceList

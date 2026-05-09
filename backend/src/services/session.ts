@@ -168,3 +168,86 @@ export async function getMessagesBySession(
     metadata: m.metadata ? JSON.parse(m.metadata as string) : null,
   })) as Message[];
 }
+
+export interface TimelineItem {
+  type: 'message' | 'trace' | 'tool_call';
+  id: string;
+  timestamp: string;
+  data: unknown;
+}
+
+export async function getSessionTimeline(sessionId: string): Promise<TimelineItem[]> {
+  const [messages, traces, toolCalls] = await Promise.all([
+    query<Message>(
+      `SELECT id, session_id, role, content, timestamp, metadata, created_at 
+       FROM messages WHERE session_id = $1 ORDER BY timestamp ASC`,
+      [sessionId]
+    ),
+    query<{
+      id: string; name: string; trace_type: string; input: string; output: string;
+      status: string; latency_ms: number | null; started_at: string; error: string | null;
+    }>(
+      `SELECT id, name, trace_type, input, output, status, latency_ms, started_at, error 
+       FROM traces WHERE session_id = $1 ORDER BY started_at ASC`,
+      [sessionId]
+    ),
+    query<{
+      id: string; tool_name: string; input: string; output: string; status: string; started_at: string;
+    }>(
+      `SELECT id, tool_name, input, output, status, started_at 
+       FROM tool_calls WHERE session_id = $1 ORDER BY started_at ASC`,
+      [sessionId]
+    ),
+  ]);
+  
+  const items: TimelineItem[] = [];
+  
+  for (const m of messages) {
+    items.push({
+      type: 'message',
+      id: m.id,
+      timestamp: m.timestamp as unknown as string,
+      data: {
+        role: m.role,
+        content: m.content,
+        metadata: m.metadata ? JSON.parse(m.metadata as string) : null,
+      },
+    });
+  }
+  
+  for (const t of traces) {
+    items.push({
+      type: 'trace',
+      id: t.id,
+      timestamp: t.started_at,
+      data: {
+        name: t.name,
+        trace_type: t.trace_type,
+        input: t.input ? JSON.parse(t.input as string) : null,
+        output: t.output ? JSON.parse(t.output as string) : null,
+        status: t.status,
+        latency_ms: t.latency_ms,
+        error: t.error,
+      },
+    });
+  }
+  
+  for (const tc of toolCalls) {
+    items.push({
+      type: 'tool_call',
+      id: tc.id,
+      timestamp: tc.started_at,
+      data: {
+        tool_name: tc.tool_name,
+        input: tc.input ? JSON.parse(tc.input as string) : null,
+        output: tc.output ? JSON.parse(tc.output as string) : null,
+        status: tc.status,
+      },
+    });
+  }
+  
+  // Sort by timestamp
+  items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  
+  return items;
+}

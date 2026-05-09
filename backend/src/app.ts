@@ -15,6 +15,13 @@ import { qualityRoutes } from './routes/quality.js';
 import { costRoutes } from './routes/cost.js';
 import { alertsRoutes } from './routes/alerts.js';
 import decisionsRoutes from './routes/decisions.js';
+import { evaluationRoutes } from './routes/evaluation.js';
+import { promptsRoutes } from './routes/prompts.js';
+import { playgroundRoutes } from './routes/playground.js';
+import { modelConfigRoutes } from './routes/modelConfigs.js';
+import { toolCallsRoutes } from './routes/toolCalls.js';
+import { feedbackRoutes } from './routes/feedback.js';
+import { spansRoutes } from './routes/spans.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -43,6 +50,13 @@ export async function buildApp() {
   await app.register(costRoutes, { prefix: `${config.api.prefix}/cost` });
   await app.register(alertsRoutes, { prefix: `${config.api.prefix}/alerts` });
   await app.register(decisionsRoutes, { prefix: config.api.prefix });
+  await app.register(evaluationRoutes, { prefix: `${config.api.prefix}/evaluation` });
+  await app.register(promptsRoutes, { prefix: `${config.api.prefix}/prompts` });
+  await app.register(playgroundRoutes, { prefix: `${config.api.prefix}/playground` });
+  await app.register(modelConfigRoutes, { prefix: `${config.api.prefix}/model-configs` });
+  await app.register(toolCallsRoutes, { prefix: `${config.api.prefix}/tool-calls` });
+  await app.register(feedbackRoutes, { prefix: `${config.api.prefix}/feedbacks` });
+  await app.register(spansRoutes, { prefix: `${config.api.prefix}/spans` });
   await app.register(wsRoutes);
   
   app.setErrorHandler((error: FastifyError, request, reply) => {

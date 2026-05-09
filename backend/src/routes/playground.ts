@@ -1,0 +1,125 @@
+import { FastifyInstance } from 'fastify';
+import { authMiddleware } from '../middleware/auth.js';
+import { createRun, getRunById, getRunsByProject } from '../services/prompts.js';
+import { compareModels } from '../services/playground.js';
+
+export async function playgroundRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/run', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = request.body as {
+      project_id: string;
+      prompt_id?: string;
+      prompt_version_id?: string;
+      model: string;
+      input: string;
+      output?: string;
+      latency_ms?: number;
+      status?: string;
+      metadata?: Record<string, unknown>;
+    };
+
+    if (!body.project_id) {
+      reply.code(400).send({ error: 'project_id is required' });
+      return;
+    }
+    if (!body.model) {
+      reply.code(400).send({ error: 'model is required' });
+      return;
+    }
+    if (!body.input) {
+      reply.code(400).send({ error: 'input is required' });
+      return;
+    }
+
+    const run = await createRun(body.project_id, body);
+    reply.code(201).send(run);
+  });
+
+  app.get('/runs', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const query = request.query as { project_id?: string; prompt_id?: string };
+    if (!query.project_id) {
+      reply.code(400).send({ error: 'project_id is required' });
+      return;
+    }
+
+    const runs = await getRunsByProject(query.project_id, query.prompt_id);
+    reply.send(runs);
+  });
+
+  app.get('/runs/:id', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const params = request.params as { id: string };
+    const run = await getRunById(params.id);
+
+    if (!run) {
+      reply.code(404).send({ error: 'Run not found' });
+      return;
+    }
+
+    reply.send(run);
+  });
+
+  // POST /api/playground/compare - 多模型对比运行
+  app.post('/compare', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const body = request.body as {
+      project_id: string;
+      prompt_id?: string;
+      prompt_version_id?: string;
+      input: string;
+      model_config_ids: string[];
+    };
+
+    if (!body.project_id) {
+      reply.code(400).send({ error: 'project_id is required' });
+      return;
+    }
+
+    if (!body.input || body.input.trim().length === 0) {
+      reply.code(400).send({ error: 'input is required' });
+      return;
+    }
+
+    if (!body.model_config_ids || !Array.isArray(body.model_config_ids)) {
+      reply.code(400).send({ error: 'model_config_ids is required and must be an array' });
+      return;
+    }
+
+    if (body.model_config_ids.length < 2) {
+      reply.code(400).send({ error: '至少需要选择 2 个模型进行对比' });
+      return;
+    }
+
+    try {
+      const result = await compareModels({
+        projectId: body.project_id,
+        input: body.input,
+        modelConfigIds: body.model_config_ids,
+        promptId: body.prompt_id,
+        promptVersionId: body.prompt_version_id,
+      });
+
+      reply.send(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Compare failed';
+      reply.code(400).send({ error: message });
+    }
+  });
+}

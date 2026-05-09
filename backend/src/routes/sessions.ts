@@ -6,7 +6,9 @@ import {
   endSession,
   addMessage,
   getMessagesBySession,
+  getSessionTimeline,
 } from '../services/session.js';
+import { createDataset, addDatasetItems } from '../services/evaluation.js';
 import { apikeyMiddleware } from '../middleware/apikey.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getProjectById } from '../services/project.js';
@@ -224,5 +226,74 @@ export async function sessionsRoutes(app: FastifyInstance): Promise<void> {
     });
     
     reply.send({ messages });
+  });
+
+  // GET /sessions/:id/timeline - 获取会话时间线（用户认证）
+  app.get('/:id/timeline', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+    
+    const params = request.params as { id: string };
+    const session = await getSessionById(params.id);
+    
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const project = await getProjectById(session.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+    
+    const timeline = await getSessionTimeline(params.id);
+    reply.send({ timeline });
+  });
+
+  // POST /sessions/:id/export-dataset - 导出会话消息为数据集（用户认证）
+  app.post('/:id/export-dataset', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const params = request.params as { id: string };
+    const body = request.body as { name?: string };
+
+    const session = await getSessionById(params.id);
+    if (!session) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+
+    const project = await getProjectById(session.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Session not found' });
+      return;
+    }
+
+    const messages = await getMessagesBySession(params.id);
+    // Pair user messages with next assistant messages as dataset items
+    const items: Array<{ input: string; expected_output: string }> = [];
+    for (let i = 0; i < messages.length - 1; i++) {
+      if (messages[i].role === 'user' && messages[i + 1].role === 'assistant') {
+        items.push({
+          input: messages[i].content,
+          expected_output: messages[i + 1].content,
+        });
+      }
+    }
+
+    const datasetName = body.name || `Session-${params.id.slice(0, 8)}-Replay`;
+    const dataset = await createDataset(session.project_id, datasetName, `Replay dataset exported from session ${params.id}`, 'chat');
+
+    if (items.length > 0) {
+      await addDatasetItems(dataset.id, items);
+    }
+
+    reply.code(201).send({ dataset, itemCount: items.length });
   });
 }

@@ -10,6 +10,7 @@ type SDKConfig struct {
 	BufferSize        int
 	FlushInterval     time.Duration
 	EnableBreakpoints bool
+	EnableSpanWrite   bool
 	SampleRate        float64
 	AlwaysCapture     []string
 }
@@ -100,9 +101,27 @@ type Message struct {
 
 // BufferedEvent is an event in the buffer
 type BufferedEvent struct {
-	Type string
-	Data TraceData
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
 }
 
 // BreakpointPauseHandler is a function that handles breakpoint pauses
 type BreakpointPauseHandler func(breakpoint Breakpoint, context BreakpointCheckContext, state SnapshotState) bool
+
+// SpanContext 表示一个 Span 的完整上下文信息
+type SpanContext struct {
+	SpanID       string                 `json:"spanId"`
+	TraceID      string                 `json:"traceId"`
+	ParentSpanID string                 `json:"parentSpanId,omitempty"`
+	Name         string                 `json:"name"`
+	TraceType    string                 `json:"traceType"`
+	StartedAt    string                 `json:"startedAt"`
+	EndedAt      string                 `json:"endedAt,omitempty"`
+	LatencyMs    float64                `json:"latencyMs,omitempty"`
+	Input        interface{}            `json:"input,omitempty"`
+	Output       interface{}            `json:"output,omitempty"`
+	Attributes   map[string]interface{} `json:"attributes,omitempty"`
+	Status       string                 `json:"status,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+	SessionID    string                 `json:"sessionId,omitempty"`
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgentMonitor } from '../src/index.js';
-import type { Breakpoint } from '../src/types.js';
+import type { Breakpoint, SpanContext } from '../src/types.js';
 
 // ─────────────────────────────────────────────────────────
 // 测试辅助
@@ -13,6 +13,7 @@ const BASE_CONFIG = {
   apiKey: 'proj-1_test-key',
   flushInterval: 999_999_999, // 几乎永不自动 flush
   bufferSize: 999_999,        // 不触发 buffer-full flush
+  enableSpanWrite: false,     // 旧测试不涉及 span 双写
 };
 
 const makeBreakpoint = (overrides: Partial<Breakpoint> = {}): Breakpoint => ({
@@ -60,7 +61,7 @@ describe('P0-1: 断点本地缓存', () => {
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: true });
 
     // 等待初始化的断点规则拉取完成
-    await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
 
     fetchMock.mockClear();
 
@@ -80,7 +81,8 @@ describe('P0-1: 断点本地缓存', () => {
     globalAny.fetch = fetchMock;
 
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: true });
-    await Promise.resolve();
+    // 等待 refreshBreakpointRules 完成（需要多个微任务周期）
+    await new Promise(r => setTimeout(r, 0));
     fetchMock.mockClear();
 
     await monitor.trackMessage({ sessionId: 'sess-1', role: 'assistant', content: '发生了 ERROR，请检查' });
@@ -100,7 +102,7 @@ describe('P0-1: 断点本地缓存', () => {
     globalAny.fetch = fetchMock;
 
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: true });
-    await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
     fetchMock.mockClear();
 
     await monitor.trackMessage({ sessionId: 'sess-1', role: 'assistant', content: 'ERROR 发生了' });
@@ -118,7 +120,7 @@ describe('P0-1: 断点本地缓存', () => {
     globalAny.fetch = fetchMock;
 
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: true });
-    await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
     fetchMock.mockClear();
 
     // 未超阈值
@@ -154,7 +156,7 @@ describe('P0-1: 断点本地缓存', () => {
     globalAny.fetch = fetchMock;
 
     monitor = AgentMonitor.init({ ...BASE_CONFIG, enableBreakpoints: true });
-    await Promise.resolve();
+    await new Promise(r => setTimeout(r, 0));
     fetchMock.mockClear();
 
     await monitor.trackMessage({ sessionId: 'sess-1', role: 'user', content: '一切正常，没有问题' });
@@ -461,5 +463,166 @@ describe('P1: 采样机制', () => {
     const callCount = globalAny.fetch.mock.calls.length;
     // alwaysCapture 默认包含 'breakpoint'，所以应该全部上报
     expect(callCount).toBe(10);
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// Feedback 测试组
+// ─────────────────────────────────────────────────────────
+
+describe('collectFeedback', () => {
+  it('should send feedback via POST /feedbacks', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 201, json: async () => ({ feedback: { id: 'fb-1', rating: 1 } }),
+    } as Response);
+    globalAny.fetch = fetchMock;
+
+    monitor = AgentMonitor.init(BASE_CONFIG);
+    await monitor.collectFeedback({
+      sessionId: 'sess-1',
+      messageId: 'msg-1',
+      rating: 1,
+      reason: 'helpful',
+      comment: 'Great!',
+      dimensions: { accuracy: 5 },
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    const call = fetchMock.mock.calls.find((c: any[]) => (c[0] as string).includes('/feedbacks'));
+    expect(call).toBeDefined();
+    const init = call![1] as RequestInit;
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body.rating).toBe(1);
+    expect(body.reason).toBe('helpful');
+    expect(body.dimensions).toEqual({ accuracy: 5 });
+  });
+
+  it('should not send feedback when disabled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 } as Response);
+    globalAny.fetch = fetchMock;
+
+    monitor = AgentMonitor.init({ ...BASE_CONFIG, disabled: true });
+    await monitor.collectFeedback({ rating: 1, reason: 'helpful' });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('should handle network errors silently', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('Network error'));
+    globalAny.fetch = fetchMock;
+
+    monitor = AgentMonitor.init(BASE_CONFIG);
+    // Should not throw
+    await monitor.collectFeedback({ rating: -1, reason: 'incorrect' });
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// P0-01 测试组：Span 级追踪 API
+// ─────────────────────────────────────────────────────────
+
+describe('P0-01: Span API', () => {
+  it('startSpan → endSpan 完整生命周期', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
+    const span = m.startSpan('llm_call', { input: { model: 'gpt-4' } });
+
+    expect(span.spanId).toBeDefined();
+    expect(span.traceId).toBeDefined();
+    expect(span.name).toBe('llm_call');
+    expect(span.startedAt).toBeDefined();
+
+    m.endSpan(span, { status: 'success', output: { content: 'hi' } });
+
+    // buffer 中应有两条 span 事件
+    const buffer = (m as any).buffer as any[];
+    const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    expect(spanEvents.length).toBe(2);
+    expect(spanEvents[1].data.endedAt).toBeDefined();
+    expect(spanEvents[1].data.status).toBe('success');
+  });
+
+  it('withSpan 自动管理生命周期（成功场景）', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
+
+    const result = await m.withSpan('db_query', async (span) => {
+      expect(span.name).toBe('db_query');
+      return 42;
+    });
+
+    expect(result).toBe(42);
+    const buffer = (m as any).buffer as any[];
+    const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    expect(spanEvents.length).toBe(2);
+    expect(spanEvents[1].data.status).toBe('success');
+    expect(spanEvents[1].data.output).toBe(42);
+  });
+
+  it('withSpan 异常时 status 为 error', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
+
+    await expect(
+      m.withSpan('failing_op', async () => {
+        throw new Error('boom');
+      })
+    ).rejects.toThrow('boom');
+
+    const buffer = (m as any).buffer as any[];
+    const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    expect(spanEvents[1].data.status).toBe('error');
+    expect(spanEvents[1].data.error).toBe('boom');
+  });
+
+  it('trace() 双写 span 到 buffer', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
+
+    await m.trace({
+      traceType: 'llm',
+      name: 'gpt-4',
+      latencyMs: 500,
+      status: 'success',
+    });
+
+    const buffer = (m as any).buffer as any[];
+    const traceEvents = buffer.filter((e: any) => e.type === 'trace');
+    const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    expect(traceEvents.length).toBe(1);
+    expect(spanEvents.length).toBe(1);
+    expect(spanEvents[0].data.name).toBe('gpt-4');
+  });
+
+  it('spanStack 超过 1000 时自动清理', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
+    (m as any).MAX_SPAN_STACK_SIZE = 5; // 降低阈值方便测试
+
+    // 创建超过阈值的 span
+    const spans: SpanContext[] = [];
+    for (let i = 0; i < 6; i++) {
+      spans.push(m.startSpan(`span_${i}`));
+    }
+
+    // 最早的 span 应该被自动清理
+    const stack = (m as any).spanStack as Map<string, any[]>;
+    let total = 0;
+    for (const s of stack.values()) {
+      total += s.length;
+    }
+    expect(total).toBeLessThanOrEqual(5);
+  });
+
+  it('enableSpanWrite=false 时不生成 span', async () => {
+    const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: false });
+
+    await m.trace({
+      traceType: 'llm',
+      name: 'gpt-4',
+      status: 'success',
+    });
+
+    const buffer = (m as any).buffer as any[];
+    const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    expect(spanEvents.length).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { ReactNode } from 'react';
+import { useTranslation } from '../App';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,12 +9,13 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { token, isLoading } = useAuthStore();
+  const { t } = useTranslation();
   const location = useLocation();
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">{t.loading}</div>
       </div>
     );
   }

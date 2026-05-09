@@ -36,7 +36,7 @@ export function LoginPage() {
               onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
               className="text-sm text-gray-500 hover:text-gray-700"
             >
-              {lang === 'zh' ? 'EN' : '中文'}
+              {lang === 'zh' ? t.langEn : t.langZh}
             </button>
           </div>
 
@@ -51,7 +51,7 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="user@example.com"
+                placeholder={t.emailExample}
               />
             </div>
 

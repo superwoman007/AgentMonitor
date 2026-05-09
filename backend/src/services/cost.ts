@@ -52,7 +52,7 @@ export interface CostSuggestion {
   potentialSaving: number;
 }
 
-function getModelPricing(model: string): ModelPricing {
+export function getModelPricing(model: string): ModelPricing {
   const normalizedModel = model.toLowerCase();
   const keys = Object.keys(MODEL_PRICING)
     .filter((k) => k !== 'default')
@@ -69,14 +69,14 @@ function getModelPricing(model: string): ModelPricing {
   return MODEL_PRICING['default'];
 }
 
-function extractModelFromMetadata(metadata: unknown): string {
+export function extractModelFromMetadata(metadata: unknown): string {
   const parsed = parseJsonIfString(metadata);
   if (!parsed || typeof parsed !== 'object') return 'unknown';
   const meta = parsed as Record<string, unknown>;
   return (meta.model as string) || (meta.modelId as string) || 'unknown';
 }
 
-function extractTokensFromMetadata(metadata: unknown): { input: number; output: number } {
+export function extractTokensFromMetadata(metadata: unknown): { input: number; output: number } {
   const parsed = parseJsonIfString(metadata);
   if (!parsed || typeof parsed !== 'object') return { input: 0, output: 0 };
   const meta = parsed as Record<string, unknown>;
@@ -103,7 +103,7 @@ function extractTokensFromMetadata(metadata: unknown): { input: number; output: 
   };
 }
 
-function parseJsonIfString(value: unknown): unknown {
+export function parseJsonIfString(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const trimmed = value.trim();
   if (trimmed.length === 0) return value;

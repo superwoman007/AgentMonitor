@@ -14,7 +14,10 @@ import type {
   BreakpointPauseHandler,
   DecisionData,
   DecisionWithOptions,
+  SpanContext,
+  SpanOptions,
 } from './types.js';
+import { autoInstrument } from './auto-instrument.js';
 
 type BufferedEvent = {
   type: 'trace';
@@ -27,6 +30,9 @@ type BufferedEvent = {
     triggerReason: string;
     state: SnapshotState;
   };
+} | {
+  type: 'span';
+  data: SpanContext;
 };
 
 export class AgentMonitor {
@@ -53,6 +59,10 @@ export class AgentMonitor {
   // P1: 采样机制
   private sessionSampleDecisions = new Map<string, boolean>(); // session 级别采样决策
 
+  // P0-01: Span 级追踪
+  private spanStack = new Map<string, SpanContext[]>();
+  private readonly MAX_SPAN_STACK_SIZE = 1000;
+
   constructor(config: SDKConfig) {
     this.config = {
       baseUrl: 'http://localhost:3000',
@@ -63,6 +73,7 @@ export class AgentMonitor {
       enableBreakpoints: true,
       sampleRate: 1.0, // 默认全量上报
       alwaysCapture: ['error', 'breakpoint'], // 错误和断点总是上报
+      enableSpanWrite: true, // 默认启用 Span 写入
       ...config,
     };
 
@@ -166,6 +177,27 @@ export class AgentMonitor {
     };
 
     this.buffer.push({ type: 'trace', data: enrichedData });
+
+    // 双写：同步生成一条 span 记录
+    if (this.config.enableSpanWrite) {
+      const spanData: SpanContext = {
+        spanId: this.generateUUID(),
+        traceId: this.generateUUID(),
+        name: data.name,
+        traceType: data.traceType,
+        startedAt: enrichedData.startedAt!,
+        endedAt: enrichedData.endedAt,
+        latencyMs: data.latencyMs,
+        input: data.input,
+        output: data.output,
+        attributes: data.metadata as Record<string, unknown> | undefined,
+        status: enrichedData.status,
+        error: data.error,
+        sessionId: data.sessionId,
+      };
+      this.buffer.push({ type: 'span', data: spanData });
+    }
+
     this.maybeFlush();
   }
 
@@ -527,6 +559,8 @@ export class AgentMonitor {
           await this.sendTrace(event.data);
         } else if (event.type === 'snapshot') {
           await this.sendSnapshot(event.data);
+        } else if (event.type === 'span') {
+          await this.sendSpan(event.data);
         }
       }
 
@@ -638,6 +672,269 @@ export class AgentMonitor {
     }, this.retryDelayMs);
   }
 
+  async collectFeedback(data: {
+    sessionId?: string;
+    messageId?: string;
+    rating: number;
+    reason?: string;
+    comment?: string;
+    dimensions?: Record<string, unknown>;
+  }): Promise<void> {
+    if (this.config.disabled) return;
+
+    try {
+      const response = await this.fetchApi('/feedbacks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': this.config.apiKey,
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error(`[AgentMonitor] Feedback report failed: ${response.status} ${text}`);
+      }
+    } catch (error) {
+      console.error('[AgentMonitor] Failed to send feedback:', error);
+    }
+  }
+
+  autoInstrument(options?: { openAI?: any }): void {
+    autoInstrument(this, options || {});
+  }
+
+  // ─────────────────────────────────────────────
+  // P0-01: Span 级追踪 API
+  // ─────────────────────────────────────────────
+
+  /**
+   * 开始一个新的 Span，返回 SpanContext
+   * @param name - Span 名称
+   * @param options - 可选配置（输入数据、属性、会话ID）
+   * @returns SpanContext 用于后续 endSpan
+   */
+  startSpan(name: string, options?: SpanOptions): SpanContext {
+    const traceId = this.getCurrentTraceId() || this.generateUUID();
+    const spanId = this.generateUUID();
+    const parentSpanId = this.getCurrentSpanId(traceId);
+
+    const ctx: SpanContext = {
+      spanId,
+      traceId,
+      parentSpanId,
+      name,
+      traceType: 'span',
+      startedAt: new Date().toISOString(),
+      input: options?.input,
+      attributes: options?.attributes,
+      sessionId: options?.sessionId ?? this.currentSessionId ?? null,
+    };
+
+    // 入栈
+    if (!this.spanStack.has(traceId)) {
+      this.spanStack.set(traceId, []);
+    }
+    this.spanStack.get(traceId)!.push(ctx);
+
+    // 内存保护
+    this.maybeCleanupSpanStack();
+
+    this.bufferSpan(ctx);
+    return ctx;
+  }
+
+  /**
+   * 结束一个 Span，计算延迟并更新状态
+   * @param ctx - startSpan 返回的 SpanContext
+   * @param result - 结束时的状态信息
+   */
+  endSpan(ctx: SpanContext, result?: { status?: string; output?: unknown; error?: string; attributes?: Record<string, unknown> }): void {
+    const endedAt = new Date().toISOString();
+    const latencyMs = new Date(endedAt).getTime() - new Date(ctx.startedAt).getTime();
+
+    const endedCtx: SpanContext = {
+      ...ctx,
+      endedAt,
+      latencyMs,
+      status: result?.status || (result?.error ? 'error' : 'success'),
+      output: result?.output,
+      error: result?.error,
+      attributes: { ...ctx.attributes, ...result?.attributes },
+    };
+
+    // 出栈
+    const stack = this.spanStack.get(ctx.traceId);
+    if (stack) {
+      const idx = stack.findIndex(s => s.spanId === ctx.spanId);
+      if (idx !== -1) stack.splice(idx, 1);
+    }
+
+    this.bufferSpan(endedCtx);
+  }
+
+  /**
+   * 便捷方法：自动管理 Span 生命周期
+   * @param name - Span 名称
+   * @param fn - 要执行的异步函数，接收 SpanContext 参数
+   * @param options - 可选配置
+   * @returns 函数执行结果
+   */
+  async withSpan<T>(name: string, fn: (span: SpanContext) => Promise<T>, options?: SpanOptions): Promise<T> {
+    const span = this.startSpan(name, options);
+    try {
+      const result = await fn(span);
+      this.endSpan(span, { status: 'success', output: result });
+      return result;
+    } catch (error) {
+      this.endSpan(span, {
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * 设置当前活跃 Span 的单个属性
+   * @param traceId - 追踪ID，用于定位 spanStack 中的栈
+   * @param key - 属性键名
+   * @param value - 属性值
+   */
+  setSpanAttribute(traceId: string, key: string, value: unknown): void {
+    const stack = this.spanStack.get(traceId);
+    if (stack && stack.length > 0) {
+      const current = stack[stack.length - 1];
+      if (!current.attributes) current.attributes = {};
+      current.attributes[key] = value;
+    }
+  }
+
+  /**
+   * 批量设置当前活跃 Span 的属性
+   * @param traceId - 追踪ID，用于定位 spanStack 中的栈
+   * @param attrs - 要批量设置的属性键值对
+   */
+  setSpanAttributes(traceId: string, attrs: Record<string, unknown>): void {
+    const stack = this.spanStack.get(traceId);
+    if (stack && stack.length > 0) {
+      const current = stack[stack.length - 1];
+      if (!current.attributes) current.attributes = {};
+      Object.assign(current.attributes, attrs);
+    }
+  }
+
+  /**
+   * 将 Span 数据推入 buffer
+   * @param span - Span 上下文数据
+   */
+  private bufferSpan(span: SpanContext): void {
+    if (!this.config.enableSpanWrite) return;
+    this.buffer.push({ type: 'span', data: span });
+    this.maybeFlush();
+  }
+
+  /**
+   * 获取当前 traceId（从 spanStack 中获取最近的）
+   * @returns 当前活跃的 traceId，若无则返回 undefined
+   */
+  private getCurrentTraceId(): string | undefined {
+    for (const [traceId, stack] of this.spanStack) {
+      if (stack.length > 0) return traceId;
+    }
+    return undefined;
+  }
+
+  /**
+   * 获取当前层级的 parentSpanId
+   * @param traceId - 追踪ID
+   * @returns 当前栈顶的 spanId，作为新 span 的 parentSpanId
+   */
+  private getCurrentSpanId(traceId: string): string | undefined {
+    const stack = this.spanStack.get(traceId);
+    if (stack && stack.length > 0) {
+      return stack[stack.length - 1].spanId;
+    }
+    return undefined;
+  }
+
+  /**
+   * 内存保护：spanStack 总数超过阈值时清理最早的 span
+   */
+  private maybeCleanupSpanStack(): void {
+    let total = 0;
+    for (const stack of this.spanStack.values()) {
+      total += stack.length;
+    }
+    if (total > this.MAX_SPAN_STACK_SIZE) {
+      // 找到最早的 traceId 并关闭其所有 span
+      const firstKey = this.spanStack.keys().next().value;
+      if (firstKey) {
+        const stack = this.spanStack.get(firstKey)!;
+        while (stack.length > 0) {
+          const span = stack.shift()!;
+          this.bufferSpan({ ...span, status: 'error', error: 'auto-closed: stack overflow' });
+        }
+        this.spanStack.delete(firstKey);
+      }
+    }
+  }
+
+  /**
+   * 生成 UUID（兼容浏览器和 Node.js）
+   * @returns UUID 字符串
+   */
+  private generateUUID(): string {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  /**
+   * 发送 span 数据到 POST /api/v1/spans
+   * @param span - Span 上下文数据
+   */
+  private async sendSpan(span: SpanContext): Promise<void> {
+    try {
+      const response = await this.fetchApi('/spans', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': this.config.apiKey,
+          'Authorization': `Bearer ${this.config.apiKey}`,
+        },
+        body: JSON.stringify({
+          traceId: span.traceId,
+          spanId: span.spanId,
+          parentSpanId: span.parentSpanId,
+          name: span.name,
+          traceType: span.traceType,
+          startedAt: span.startedAt,
+          endedAt: span.endedAt,
+          latencyMs: span.latencyMs,
+          input: span.input,
+          output: span.output,
+          attributes: span.attributes,
+          status: span.status,
+          error: span.error,
+          sessionId: span.sessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        console.warn(`[AgentMonitor] Failed to send span: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('[AgentMonitor] Failed to send span:', error);
+    }
+  }
+
   close(): void {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
@@ -645,6 +942,14 @@ export class AgentMonitor {
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
     }
+    // 自动结束所有未关闭的 span
+    for (const [traceId, stack] of this.spanStack) {
+      while (stack.length > 0) {
+        const span = stack.shift()!;
+        this.bufferSpan({ ...span, status: 'error', error: 'auto-closed: monitor closed' });
+      }
+    }
+    this.spanStack.clear();
     this.flush();
   }
 
