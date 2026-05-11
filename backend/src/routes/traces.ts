@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { createTrace, getTracesByProject, getTraceById, updateTrace, getTraceTree, getChildTraceCount, addTraceEvalResult, getTraceEvalResults, getTracesByPrompt } from '../services/trace.js';
+import { evaluateTraceTrajectory, getTraceTrajectoryEvals } from '../services/trace-evaluation.js';
 import { getSpanTree } from '../services/span.js';
 import { checkBreakpoints } from '../services/breakpoint.js';
 import { createSnapshot } from '../services/snapshot.js';
@@ -676,5 +677,74 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     const updatedDataset = await getDatasetByIdEval2(dataset.id);
 
     reply.code(201).send({ imported: createdItems.length, dataset: updatedDataset || dataset, traceIds: traces.map(t => t.id) });
+  });
+
+  // ==================== Trace Trajectory Evaluation ====================
+
+  // POST /traces/:id/trajectory-eval - 执行轨迹评测
+  app.post('/:id/trajectory-eval', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const params = request.params as { id: string };
+    const body = request.body as {
+      model_config_id?: string;
+      user_request?: string;
+      expected_outcome?: string;
+    };
+
+    const trace = await getTraceById(params.id);
+    if (!trace) {
+      reply.code(404).send({ error: 'Trace not found' });
+      return;
+    }
+
+    const project = await getProjectById(trace.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Trace not found' });
+      return;
+    }
+
+    try {
+      const result = await evaluateTraceTrajectory({
+        traceId: trace.trace_id || trace.id,
+        traceDbId: trace.id,
+        projectId: trace.project_id,
+        modelConfigId: body.model_config_id,
+        userRequest: body.user_request || (typeof trace.input === 'string' ? trace.input : JSON.stringify(trace.input)),
+        expectedOutcome: body.expected_outcome,
+      });
+
+      reply.code(201).send(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Trajectory evaluation failed';
+      reply.code(400).send({ error: message });
+    }
+  });
+
+  // GET /traces/:id/trajectory-eval - 获取轨迹评测结果
+  app.get('/:id/trajectory-eval', { preHandler: authMiddleware }, async (request, reply) => {
+    if (!request.userId) {
+      reply.code(401).send({ error: 'Unauthorized' });
+      return;
+    }
+
+    const params = request.params as { id: string };
+    const trace = await getTraceById(params.id);
+    if (!trace) {
+      reply.code(404).send({ error: 'Trace not found' });
+      return;
+    }
+
+    const project = await getProjectById(trace.project_id);
+    if (!project || project.user_id !== request.userId) {
+      reply.code(404).send({ error: 'Trace not found' });
+      return;
+    }
+
+    const evaluations = await getTraceTrajectoryEvals(trace.id);
+    reply.send({ evaluations });
   });
 }

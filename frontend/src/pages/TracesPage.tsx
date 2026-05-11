@@ -195,8 +195,8 @@ export function TracesPage() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t.traceCenter}</h1>
-            <p className="text-sm text-gray-500 mt-1">{t.traces}</p>
+            <h1 className="text-2xl font-bold text-gray-900">{t.traceNav}</h1>
+            <p className="text-sm text-gray-500 mt-1">{t.traceList}</p>
           </div>
           <RefreshButton onRefresh={handleRefresh} />
         </div>

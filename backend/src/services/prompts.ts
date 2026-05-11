@@ -1,4 +1,5 @@
 import { query, queryOne, run } from '../db/index.js';
+import { encrypt, decrypt } from '../utils/crypto.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 
@@ -300,12 +301,13 @@ export async function createModelConfig(
   baseUrl?: string
 ): Promise<ModelConfig> {
   const configId = uuidv4();
+  const encryptedKey = apiKey ? encrypt(apiKey) : null;
 
   const result = await queryOne<ModelConfig>(
     `INSERT INTO model_configs (id, project_id, name, provider, model, config, api_key, base_url)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [configId, projectId, name, provider, model, cfg ? JSON.stringify(cfg) : null, apiKey || null, baseUrl || null]
+    [configId, projectId, name, provider, model, cfg ? JSON.stringify(cfg) : null, encryptedKey, baseUrl || null]
   );
 
   if (!result) throw new Error('Failed to create model config');
@@ -317,8 +319,13 @@ export async function createModelConfig(
 
 export async function getModelConfigById(configId: string): Promise<ModelConfig | null> {
   const row = await queryOne<ModelConfig>('SELECT * FROM model_configs WHERE id = $1', [configId]);
-  if (row && typeof row.config === 'string') {
+  if (!row) return null;
+  if (typeof row.config === 'string') {
     row.config = JSON.parse(row.config);
+  }
+  // 解密 api_key（供后端调用 LLM 时使用）
+  if (row.api_key) {
+    try { row.api_key = decrypt(row.api_key); } catch { /* 可能是旧明文数据，保留原值 */ }
   }
   return row;
 }
@@ -334,7 +341,42 @@ export async function getModelConfigsByProject(projectId: string): Promise<Model
   });
 }
 
+export async function updateModelConfig(
+  configId: string,
+  data: { name?: string; provider?: string; model?: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }
+): Promise<ModelConfig | null> {
+  const existing = await getModelConfigById(configId);
+  if (!existing) return null;
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (data.name !== undefined) { updates.push(`name = $${idx++}`); params.push(data.name); }
+  if (data.provider !== undefined) { updates.push(`provider = $${idx++}`); params.push(data.provider); }
+  if (data.model !== undefined) { updates.push(`model = $${idx++}`); params.push(data.model); }
+  if (data.config !== undefined) { updates.push(`config = $${idx++}`); params.push(JSON.stringify(data.config)); }
+  if (data.api_key !== undefined) {
+    updates.push(`api_key = $${idx++}`);
+    params.push(data.api_key ? encrypt(data.api_key) : null);
+  }
+  if (data.base_url !== undefined) { updates.push(`base_url = $${idx++}`); params.push(data.base_url); }
+
+  if (updates.length === 0) return existing;
+
+  params.push(configId);
+  const nowExpr = config.dbType === 'sqlite' ? "datetime('now')" : 'NOW()';
+  const sql = `UPDATE model_configs SET ${updates.join(', ')}, updated_at = ${nowExpr} WHERE id = $${idx} RETURNING *`;
+  const result = await queryOne<ModelConfig>(sql, params);
+  if (result && typeof result.config === 'string') result.config = JSON.parse(result.config);
+  return result;
+}
+
 export async function deleteModelConfig(configId: string): Promise<boolean> {
+  // 先解除外键引用，避免 SQLITE_CONSTRAINT_FOREIGNKEY
+  await run('UPDATE evaluators SET model_config_id = NULL WHERE model_config_id = $1', [configId]);
+  await run('UPDATE evaluation_experiments SET target_model_config_id = NULL WHERE target_model_config_id = $1', [configId]);
+
   const result = await queryOne<{ id: string }>(
     'DELETE FROM model_configs WHERE id = $1 RETURNING id',
     [configId]

@@ -1,5 +1,5 @@
-import { queryOne } from '../db/index.js';
 import { createRun, getModelConfigById, PlaygroundRun, ModelConfig } from './prompts.js';
+import { callTargetModel } from './evaluation-target.js';
 
 export interface CompareInput {
   projectId: string;
@@ -39,39 +39,33 @@ export async function compareModels(data: CompareInput): Promise<CompareResult> 
     configs.push(cfg);
   }
 
-  // 2. 并行执行各模型（当前为模拟模式，保留真实 LLM 调用扩展点）
+  // 2. 并行执行各模型（真实 LLM 调用）
   const runPromises = configs.map(async (cfg) => {
-    const startTime = Date.now();
+    const targetResult = await callTargetModel({
+      input,
+      modelConfigId: cfg.id,
+      promptId: promptId || null,
+      promptVersionId: promptVersionId || null,
+    });
 
-    // TODO: 替换为真实 LLM 调用
-    // 模拟不同模型的响应时间和输出
-    const simulatedLatency = 300 + Math.floor(Math.random() * 1200);
     const modelName = cfg.model;
     const providerName = cfg.provider;
-
-    // 模拟不同模型的输出风格差异
-    const outputs: Record<string, string> = {
-      'gpt-4': `GPT-4 response: Based on my analysis, the answer to "${input}" is well-structured and comprehensive.`,
-      'gpt-3.5-turbo': `GPT-3.5 response: The answer to "${input}" is straightforward.`,
-      'claude-3-opus': `Claude response: Here is a detailed and nuanced answer to "${input}" with careful reasoning.`,
-      'claude-3-sonnet': `Claude response: A balanced answer to "${input}".`,
-    };
-
-    const output = outputs[modelName] || `[${providerName}/${modelName}] Response for: ${input}`;
 
     const run = await createRun(projectId, {
       prompt_id: promptId,
       prompt_version_id: promptVersionId,
       model: modelName,
       input,
-      output,
-      latency_ms: simulatedLatency,
-      status: 'success',
+      output: targetResult.output,
+      latency_ms: targetResult.latencyMs,
+      status: targetResult.error ? 'error' : 'success',
       metadata: {
         provider: providerName,
         config_name: cfg.name,
         compare_mode: true,
         compare_timestamp: new Date().toISOString(),
+        target_error: targetResult.error || undefined,
+        target_tokens: targetResult.tokenUsage,
       },
     });
 

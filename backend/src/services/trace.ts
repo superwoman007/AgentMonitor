@@ -56,6 +56,20 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
   // 默认使用当前时间作为 startedAt
   const startedAt = data.startedAt || new Date();
 
+  // 如果传入了 sessionId 但 session 不存在，自动创建（避免外键约束失败）
+  let sessionId = data.sessionId || null;
+  if (sessionId) {
+    const existingSession = await queryOne<{ id: string }>('SELECT id FROM sessions WHERE id = $1', [sessionId]);
+    if (!existingSession) {
+      try {
+        const { createSession } = await import('./session.js');
+        await createSession(data.projectId, sessionId);
+      } catch {
+        sessionId = null;
+      }
+    }
+  }
+
   const trace = await queryOne<Trace>(
     `INSERT INTO traces (
       id, project_id, session_id, agent_id, parent_trace_id, trace_type, name,
@@ -66,7 +80,7 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
     [
       id,
       data.projectId,
-      data.sessionId || null,
+      sessionId,
       data.agentId || null,
       data.parentTraceId || null,
       data.traceType,
@@ -95,8 +109,9 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
   try {
     await createSpan({
       projectId: data.projectId,
-      spanId: traceId,  // 使用 traceId 作为 root span 的 spanId
+      spanId: data.spanId || traceId,  // 优先使用传入的 spanId，否则用 traceId
       traceId: traceId,
+      parentSpanId: data.parentSpanId || null,
       name: data.name,
       traceType: data.traceType,
       startedAt: startedAt,

@@ -10,6 +10,7 @@ export interface LLMCallOptions {
   maxTokens?: number;
   apiKey: string;
   baseUrl?: string | null;
+  timeoutMs?: number;
 }
 
 export interface LLMResponse {
@@ -26,7 +27,10 @@ export interface LLMResponse {
  * 支持原生 fetch，零依赖
  */
 export async function callLLM(options: LLMCallOptions): Promise<LLMResponse> {
-  const baseUrl = (options.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  let baseUrl = (options.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
+  if (!baseUrl.endsWith('/v1')) {
+    baseUrl += '/v1';
+  }
   const url = `${baseUrl}/chat/completions`;
 
   const body = {
@@ -36,13 +40,27 @@ export async function callLLM(options: LLMCallOptions): Promise<LLMResponse> {
     max_tokens: options.maxTokens ?? 1024,
   };
 
+  const controller = new AbortController();
+  const timeoutId = options.timeoutMs ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
+
+  // 小米 MIMO 使用 api-key header，其他使用 Authorization: Bearer
+  const isApiKeyHeader = baseUrl.includes('xiaomimimo');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (isApiKeyHeader) {
+    headers['api-key'] = options.apiKey;
+  } else {
+    headers['Authorization'] = `Bearer ${options.apiKey}`;
+  }
+
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${options.apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
+    signal: controller.signal,
+  }).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
   });
 
   if (!response.ok) {

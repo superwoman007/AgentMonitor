@@ -557,6 +557,10 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
       description?: string;
       dataset_id: string;
       model_config?: Record<string, unknown>;
+      prompt_id?: string;
+      prompt_version_id?: string;
+      target_model_config_id?: string;
+      run_config?: Record<string, unknown>;
     };
 
     if (!body.project_id) {
@@ -574,7 +578,10 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const experiment = await createExperiment(body.project_id, body.name, body.dataset_id, body.description, body.model_config);
+    const experiment = await createExperiment(
+      body.project_id, body.name, body.dataset_id, body.description, body.model_config,
+      body.prompt_id, body.prompt_version_id, body.target_model_config_id, body.run_config
+    );
     reply.code(201).send(experiment);
   });
 
@@ -627,7 +634,7 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
 
     // EV-01: 自动执行评测引擎
     try {
-      const completedExperiment = await runExperiment(params.id, (current, total, itemResult) => {
+      await runExperiment(params.id, (current, total, itemResult) => {
         broadcastToProject(experiment.project_id, {
           type: 'experiment_progress',
           experiment_id: params.id,
@@ -637,11 +644,12 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
           item_result: itemResult,
         });
       });
-      reply.send(completedExperiment || experiment);
+      const freshExperiment = await getExperimentById(params.id);
+      reply.send(freshExperiment || experiment);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Experiment execution failed';
-      // 执行失败但实验已启动，返回当前状态
-      reply.send({ ...experiment, error: message });
+      const freshExperiment = await getExperimentById(params.id);
+      reply.send(freshExperiment || { ...experiment, error: message });
     }
   });
 

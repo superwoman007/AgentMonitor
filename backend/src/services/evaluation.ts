@@ -47,6 +47,10 @@ export interface EvaluationExperiment {
   description: string | null;
   dataset_id: string;
   model_config: Record<string, unknown> | null;
+  prompt_id: string | null;
+  prompt_version_id: string | null;
+  target_model_config_id: string | null;
+  run_config: Record<string, unknown> | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
   results_summary: Record<string, unknown> | null;
   created_at: Date;
@@ -416,15 +420,29 @@ export async function createExperiment(
   name: string,
   datasetId: string,
   description?: string,
-  modelConfig?: Record<string, unknown>
+  modelConfig?: Record<string, unknown>,
+  promptId?: string,
+  promptVersionId?: string,
+  targetModelConfigId?: string,
+  runConfig?: Record<string, unknown>
 ): Promise<EvaluationExperiment> {
   const experimentId = uuidv4();
 
   const experiment = await queryOne<EvaluationExperiment>(
-    `INSERT INTO evaluation_experiments (id, project_id, name, description, dataset_id, model_config)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO evaluation_experiments (
+       id, project_id, name, description, dataset_id, model_config,
+       prompt_id, prompt_version_id, target_model_config_id, run_config
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [experimentId, projectId, name, description || null, datasetId, modelConfig ? JSON.stringify(modelConfig) : null]
+    [
+      experimentId, projectId, name, description || null, datasetId,
+      modelConfig ? JSON.stringify(modelConfig) : null,
+      promptId || null,
+      promptVersionId || null,
+      targetModelConfigId || null,
+      runConfig ? JSON.stringify(runConfig) : null,
+    ]
   );
 
   if (!experiment) {
@@ -439,6 +457,7 @@ export async function getExperimentById(experimentId: string): Promise<Evaluatio
   if (row) {
     if (typeof row.model_config === 'string') row.model_config = JSON.parse(row.model_config);
     if (typeof row.results_summary === 'string') row.results_summary = JSON.parse(row.results_summary);
+    if (typeof row.run_config === 'string') row.run_config = JSON.parse(row.run_config);
   }
   return row;
 }
@@ -451,6 +470,7 @@ export async function getExperimentsByProject(projectId: string): Promise<Evalua
   return rows.map(row => {
     if (typeof row.model_config === 'string') row.model_config = JSON.parse(row.model_config);
     if (typeof row.results_summary === 'string') row.results_summary = JSON.parse(row.results_summary);
+    if (typeof row.run_config === 'string') row.run_config = JSON.parse(row.run_config);
     return row;
   });
 }
@@ -464,6 +484,7 @@ export async function startExperiment(experimentId: string): Promise<EvaluationE
   if (row) {
     if (typeof row.model_config === 'string') row.model_config = JSON.parse(row.model_config);
     if (typeof row.results_summary === 'string') row.results_summary = JSON.parse(row.results_summary);
+    if (typeof row.run_config === 'string') row.run_config = JSON.parse(row.run_config);
   }
   return row;
 }
@@ -480,6 +501,7 @@ export async function completeExperiment(
   if (row) {
     if (typeof row.model_config === 'string') row.model_config = JSON.parse(row.model_config);
     if (typeof row.results_summary === 'string') row.results_summary = JSON.parse(row.results_summary);
+    if (typeof row.run_config === 'string') row.run_config = JSON.parse(row.run_config);
   }
   return row;
 }

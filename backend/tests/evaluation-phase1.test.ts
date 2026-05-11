@@ -1,6 +1,18 @@
+import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
+
+// Mock callLLM to avoid real API calls during tests
+vi.mock('../src/services/llm-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/services/llm-client.js')>('../src/services/llm-client.js');
+  return {
+    ...actual,
+    callLLM: vi.fn(),
+  };
+});
+
+import { callLLM } from '../src/services/llm-client.js';
 
 describe('Evaluation Center Phase 1 API', () => {
   let app: FastifyInstance;
@@ -9,6 +21,7 @@ describe('Evaluation Center Phase 1 API', () => {
   let projectId: string;
   let datasetId: string;
   let experimentId: string;
+  let modelConfigId: string;
   const testEmail = `test-phase1-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -31,6 +44,21 @@ describe('Evaluation Center Phase 1 API', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ project_id: projectId, name: 'Phase 1 Test Key' });
     apiKey = keyResponse.body.key;
+
+    // Create a model config for experiment target
+    const cfgResponse = await request(app.server)
+      .post('/api/model-configs')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        project_id: projectId,
+        name: 'Phase 1 Test Model Config',
+        provider: 'openai',
+        model: 'gpt-4',
+        api_key: 'sk-test-key',
+        base_url: 'https://api.openai.com/v1',
+      })
+      .expect(201);
+    modelConfigId = cfgResponse.body.id;
   });
 
   afterAll(async () => {
@@ -239,6 +267,10 @@ describe('Evaluation Center Phase 1 API', () => {
     let progressExperimentId: string;
 
     beforeAll(async () => {
+      // Mock LLM to return expected outputs for exact_match evaluator
+      const mockedCallLLM = vi.mocked(callLLM);
+      mockedCallLLM.mockResolvedValue({ content: 'A1', usage: { total_tokens: 10 } });
+
       // Create a dataset with items for progress testing
       const dsResponse = await request(app.server)
         .post('/api/evaluation/datasets')
@@ -265,7 +297,7 @@ describe('Evaluation Center Phase 1 API', () => {
         })
         .expect(201);
 
-      // Create experiment for progress testing
+      // Create experiment for progress testing WITH target model config
       const expResponse = await request(app.server)
         .post('/api/evaluation/experiments')
         .set('Authorization', `Bearer ${authToken}`)
@@ -274,6 +306,7 @@ describe('Evaluation Center Phase 1 API', () => {
           name: 'Progress Test Experiment',
           dataset_id: progressDatasetId,
           description: 'For progress testing',
+          target_model_config_id: modelConfigId,
         })
         .expect(201);
       progressExperimentId = expResponse.body.id;

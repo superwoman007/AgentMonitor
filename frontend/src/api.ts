@@ -61,7 +61,11 @@ class ApiClient {
 
     if (response.status === 401) {
       this.setToken(null);
-      window.location.href = '/login';
+      // 避免在登录/注册页触发循环刷新
+      const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
+      if (!isAuthPage) {
+        window.location.href = '/login';
+      }
       throw new Error('Unauthorized');
     }
 
@@ -483,8 +487,12 @@ class ApiClient {
       this.request<ModelConfig[]>(`/model-configs?project_id=${projectId}`),
     create: (data: { project_id: string; name: string; provider: string; model: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }) =>
       this.request<ModelConfig>('/model-configs', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; provider?: string; model?: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }) =>
+      this.request<ModelConfig>(`/model-configs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       this.request<void>(`/model-configs/${id}`, { method: 'DELETE' }),
+    test: (id: string) =>
+      this.request<{ success: boolean; latency_ms: number; response_preview?: string; error?: string }>(`/model-configs/${id}/test`, { method: 'POST', body: '{}' }),
   };
 
   feedbacks = {

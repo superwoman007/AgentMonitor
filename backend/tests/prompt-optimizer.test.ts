@@ -110,10 +110,11 @@ describe('Prompt Optimizer API (PM-04)', () => {
 
   describe('POST /api/prompts/:id/optimize', () => {
     it('应该基于评测实验生成 Prompt 优化建议', async () => {
-      // Complete the experiment
+      // Directly complete the experiment (legacy guard requires target; skip auto-run)
       await request(app.server)
-        .post(`/api/evaluation/experiments/${experimentId}/start`)
+        .post(`/api/evaluation/experiments/${experimentId}/complete`)
         .set('Authorization', `Bearer ${authToken}`)
+        .send({ results_summary: { total_items: 3, passed: 1, failed: 2, avg_score: 0.48 } })
         .expect(200);
 
       // Add results: 2 low-score, 1 high-score

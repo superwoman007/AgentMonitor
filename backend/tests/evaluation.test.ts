@@ -1,6 +1,18 @@
+import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
+
+// Mock callLLM to avoid real API calls during tests
+vi.mock('../src/services/llm-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/services/llm-client.js')>('../src/services/llm-client.js');
+  return {
+    ...actual,
+    callLLM: vi.fn(),
+  };
+});
+
+import { callLLM } from '../src/services/llm-client.js';
 
 describe('Evaluation Center API', () => {
   let app: FastifyInstance;
@@ -9,6 +21,7 @@ describe('Evaluation Center API', () => {
   let datasetId: string;
   let evaluatorId: string;
   let experimentId: string;
+  let modelConfigId: string;
   const testEmail = `test-evaluation-${Date.now()}@example.com`;
 
   beforeAll(async () => {
@@ -36,6 +49,21 @@ describe('Evaluation Center API', () => {
       });
 
     projectId = projectResponse.body.id;
+
+    // Create a model config for experiment target
+    const cfgResponse = await request(app.server)
+      .post('/api/model-configs')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        project_id: projectId,
+        name: 'Test Model Config',
+        provider: 'openai',
+        model: 'gpt-4',
+        api_key: 'sk-test-key',
+        base_url: 'https://api.openai.com/v1',
+      })
+      .expect(201);
+    modelConfigId = cfgResponse.body.id;
   });
 
   afterAll(async () => {
@@ -383,6 +411,10 @@ describe('Evaluation Center API', () => {
   describe('Evaluation Experiments', () => {
     describe('POST /api/evaluation/experiments', () => {
       it('should create an experiment', async () => {
+        // Mock LLM to return the expected output for exact_match evaluator
+        const mockedCallLLM = vi.mocked(callLLM);
+        mockedCallLLM.mockResolvedValue({ content: 'Updated answer.', usage: { total_tokens: 10 } });
+
         const response = await request(app.server)
           .post('/api/evaluation/experiments')
           .set('Authorization', `Bearer ${authToken}`)
@@ -391,6 +423,7 @@ describe('Evaluation Center API', () => {
             name: 'Test Experiment',
             description: 'First evaluation experiment',
             dataset_id: datasetId,
+            target_model_config_id: modelConfigId,
             model_config: {
               model: 'gpt-4',
               temperature: 0.7

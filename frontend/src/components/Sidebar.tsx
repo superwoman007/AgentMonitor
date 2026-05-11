@@ -21,7 +21,7 @@ export function Sidebar() {
       title: t.navObservation || '观测中心',
       items: [
         { path: '/dashboard', label: t.dashboard, icon: '📊' },
-        { path: '/traces', label: t.traces || 'Traces', icon: '🔍' },
+        { path: '/traces', label: t.traceNav || '追踪记录', icon: '🔍' },
         { path: '/sessions', label: t.sessions, icon: '💬' },
         { path: '/alerts', label: t.alerts, icon: '🔔' },
       ],

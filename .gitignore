@@ -116,4 +116,6 @@ backend/package.json.test-scripts
 # ========================
 plans/
 extract.py
-.sql
+*.sql
+tmp/*
+backend/src/db/schema.sql

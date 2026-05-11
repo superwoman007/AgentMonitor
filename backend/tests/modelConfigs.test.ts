@@ -37,7 +37,7 @@ describe('Model Configs API', () => {
   });
 
   describe('POST /api/model-configs', () => {
-    it('应该成功创建模型配置（含 api_key / base_url）', async () => {
+    it('should create model config and encrypt api_key (return masked)', async () => {
       const response = await request(app.server)
         .post('/api/model-configs')
         .set('Authorization', `Bearer ${authToken}`)
@@ -56,12 +56,13 @@ describe('Model Configs API', () => {
       expect(response.body.name).toBe('GPT-4 Test');
       expect(response.body.provider).toBe('openai');
       expect(response.body.model).toBe('gpt-4');
-      expect(response.body.api_key).toBe('sk-test123456');
+      expect(response.body.api_key).not.toBe('sk-test123456');
+      expect(response.body.api_key).toMatch(/\.\.\./);
       expect(response.body.base_url).toBe('https://api.openai.com/v1');
       expect(response.body.config).toMatchObject({ temperature: 0.7, max_tokens: 4096 });
     });
 
-    it('应该拒绝缺少必填字段', async () => {
+    it('should reject missing required fields', async () => {
       await request(app.server)
         .post('/api/model-configs')
         .set('Authorization', `Bearer ${authToken}`)
@@ -69,7 +70,7 @@ describe('Model Configs API', () => {
         .expect(400);
     });
 
-    it('应该拒绝未授权请求', async () => {
+    it('should reject unauthorized request', async () => {
       await request(app.server)
         .post('/api/model-configs')
         .send({ project_id: projectId, name: 'Test', provider: 'openai', model: 'gpt-4' })
@@ -78,7 +79,7 @@ describe('Model Configs API', () => {
   });
 
   describe('GET /api/model-configs', () => {
-    it('应该返回模型配置列表', async () => {
+    it('should return list with masked api_key', async () => {
       const response = await request(app.server)
         .get(`/api/model-configs?project_id=${projectId}`)
         .set('Authorization', `Bearer ${authToken}`)
@@ -86,9 +87,16 @@ describe('Model Configs API', () => {
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBeGreaterThan(0);
+
+      for (const cfg of response.body) {
+        if (cfg.api_key) {
+          expect(cfg.api_key).not.toBe('sk-test123456');
+          expect(cfg.api_key).toMatch(/\.\.\./);
+        }
+      }
     });
 
-    it('应该拒绝缺少 project_id', async () => {
+    it('should reject missing project_id', async () => {
       await request(app.server)
         .get('/api/model-configs')
         .set('Authorization', `Bearer ${authToken}`)
@@ -97,7 +105,7 @@ describe('Model Configs API', () => {
   });
 
   describe('GET /api/model-configs/:id', () => {
-    it('应该返回单个模型配置', async () => {
+    it('should return single config with masked api_key', async () => {
       const createRes = await request(app.server)
         .post('/api/model-configs')
         .set('Authorization', `Bearer ${authToken}`)
@@ -106,6 +114,7 @@ describe('Model Configs API', () => {
           name: 'Claude Test',
           provider: 'anthropic',
           model: 'claude-3-opus',
+          api_key: 'sk-claude-secret-key',
         })
         .expect(201);
 
@@ -115,9 +124,11 @@ describe('Model Configs API', () => {
         .expect(200);
 
       expect(response.body.name).toBe('Claude Test');
+      expect(response.body.api_key).not.toBe('sk-claude-secret-key');
+      expect(response.body.api_key).toMatch(/\.\.\./);
     });
 
-    it('应该返回 404 对于不存在的配置', async () => {
+    it('should return 404 for nonexistent config', async () => {
       await request(app.server)
         .get('/api/model-configs/nonexistent')
         .set('Authorization', `Bearer ${authToken}`)
@@ -125,8 +136,115 @@ describe('Model Configs API', () => {
     });
   });
 
+  describe('PUT /api/model-configs/:id', () => {
+    it('should update model config including api_key', async () => {
+      const createRes = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Original Name',
+          provider: 'openai',
+          model: 'gpt-3.5-turbo',
+          api_key: 'sk-original-key',
+          base_url: 'https://original.com',
+        })
+        .expect(201);
+
+      const configId = createRes.body.id;
+
+      const updateRes = await request(app.server)
+        .put(`/api/model-configs/${configId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'Updated Name',
+          model: 'gpt-4o',
+          api_key: 'sk-new-secret-key',
+          base_url: 'https://new.com',
+        })
+        .expect(200);
+
+      expect(updateRes.body.name).toBe('Updated Name');
+      expect(updateRes.body.model).toBe('gpt-4o');
+      expect(updateRes.body.base_url).toBe('https://new.com');
+      expect(updateRes.body.api_key).not.toBe('sk-new-secret-key');
+      expect(updateRes.body.api_key).toMatch(/\.\.\./);
+
+      const getRes = await request(app.server)
+        .get(`/api/model-configs/${configId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(getRes.body.name).toBe('Updated Name');
+      expect(getRes.body.model).toBe('gpt-4o');
+    });
+
+    it('should support partial update without changing api_key', async () => {
+      const createRes = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Partial Update Test',
+          provider: 'deepseek',
+          model: 'deepseek-chat',
+          api_key: 'sk-partial-key',
+        })
+        .expect(201);
+
+      const updateRes = await request(app.server)
+        .put(`/api/model-configs/${createRes.body.id}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'Only Name Changed' })
+        .expect(200);
+
+      expect(updateRes.body.name).toBe('Only Name Changed');
+      expect(updateRes.body.model).toBe('deepseek-chat');
+    });
+
+    it('should return 404 for nonexistent config', async () => {
+      await request(app.server)
+        .put('/api/model-configs/nonexistent')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ name: 'New Name' })
+        .expect(404);
+    });
+  });
+
+  describe('POST /api/model-configs/:id/test', () => {
+    it('should return connection test result', async () => {
+      const createRes = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Test Connection Config',
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          api_key: 'sk-test-connection-key',
+        })
+        .expect(201);
+
+      const response = await request(app.server)
+        .post(`/api/model-configs/${createRes.body.id}/test`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(response.body).toHaveProperty('success');
+      expect(response.body).toHaveProperty('latency_ms');
+      expect(typeof response.body.success).toBe('boolean');
+    });
+
+    it('should return 404 for nonexistent config', async () => {
+      await request(app.server)
+        .post('/api/model-configs/nonexistent/test')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
+    });
+  });
+
   describe('DELETE /api/model-configs/:id', () => {
-    it('应该删除模型配置', async () => {
+    it('should delete model config', async () => {
       const createRes = await request(app.server)
         .post('/api/model-configs')
         .set('Authorization', `Bearer ${authToken}`)

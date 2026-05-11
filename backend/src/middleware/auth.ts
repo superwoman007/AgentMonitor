@@ -1,5 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { verifyToken } from '../services/auth.js';
+import { verifyToken, getUserById } from '../services/auth.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -20,6 +20,13 @@ export async function authMiddleware(request: FastifyRequest, reply: FastifyRepl
   
   if (!payload) {
     reply.code(401).send({ error: 'Invalid or expired token' });
+    return;
+  }
+
+  // 验证 user 是否存在于数据库（防止数据库重置后旧 token 仍有效）
+  const user = await getUserById(payload.userId);
+  if (!user) {
+    reply.code(401).send({ error: 'User not found' });
     return;
   }
   

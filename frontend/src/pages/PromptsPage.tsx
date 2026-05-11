@@ -6,6 +6,24 @@ import { useTranslation } from '../App';
 
 type Tab = 'prompts' | 'versions' | 'runs' | 'configs' | 'linkedTraces';
 
+// 去掉 JSON 中的注释（// 和 /* */），支持在 config 输入框中写注释
+function stripJsonComments(jsonString: string): string {
+  return jsonString
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
+const DEFAULT_PROMPT_CONFIG = `{
+  // 控制输出随机性: 0=确定性输出, 1=完全随机 (默认 0.7)
+  "temperature": 0.7,
+
+  // 最大输出 token 数 (默认 2048)
+  "max_tokens": 2048,
+
+  // 模型调用超时毫秒数 (默认 30000)
+  "timeout_ms": 30000
+}`;
+
 export function PromptsPage() {
   const { currentProject, ensureDefaultProject } = useProjectStore();
   const { t } = useTranslation();
@@ -16,7 +34,7 @@ export function PromptsPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
-  const [promptForm, setPromptForm] = useState({ name: '', description: '', content: '', config: '{}' });
+  const [promptForm, setPromptForm] = useState({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
   const [autoRegression, setAutoRegression] = useState(false);
   const [regressionDatasetId, setRegressionDatasetId] = useState('');
@@ -202,7 +220,7 @@ export function PromptsPage() {
     if (!currentProject) return;
     try {
       let cfg = {};
-      try { cfg = JSON.parse(promptForm.config); } catch {}
+      try { cfg = JSON.parse(stripJsonComments(promptForm.config)); } catch {}
       await api.prompts.create({
         project_id: currentProject.id,
         name: promptForm.name,
@@ -211,7 +229,7 @@ export function PromptsPage() {
         config: cfg,
       });
       setShowPromptModal(false);
-      setPromptForm({ name: '', description: '', content: '', config: '{}' });
+      setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
       fetchPrompts();
     } catch (e) {
       console.error('Failed to create prompt:', e);
@@ -224,7 +242,7 @@ export function PromptsPage() {
     try {
       let cfg = undefined;
       try {
-        const parsed = JSON.parse(promptForm.config);
+        const parsed = JSON.parse(stripJsonComments(promptForm.config));
         if (Object.keys(parsed).length > 0) cfg = parsed;
       } catch {}
 
@@ -249,7 +267,7 @@ export function PromptsPage() {
       setEditingPrompt(null);
       setAutoRegression(false);
       setRegressionDatasetId('');
-      setPromptForm({ name: '', description: '', content: '', config: '{}' });
+      setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
       fetchPrompts();
       if (selectedPrompt?.id === editingPrompt.id) {
         const updated = await api.prompts.list(currentProject!.id);
@@ -363,11 +381,12 @@ export function PromptsPage() {
 
   const startEdit = (prompt: Prompt) => {
     setEditingPrompt(prompt);
+    const hasConfig = prompt.config && Object.keys(prompt.config).length > 0;
     setPromptForm({
       name: prompt.name,
       description: prompt.description || '',
       content: prompt.content,
-      config: JSON.stringify(prompt.config || {}, null, 2),
+      config: hasConfig ? JSON.stringify(prompt.config, null, 2) : DEFAULT_PROMPT_CONFIG,
     });
     fetchDatasets();
   };
@@ -422,7 +441,7 @@ export function PromptsPage() {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-medium">{t.prompts}</h2>
               <button
-                onClick={() => { setEditingPrompt(null); setPromptForm({ name: '', description: '', content: '', config: '{}' }); setShowPromptModal(true); }}
+                onClick={() => { setEditingPrompt(null); setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG }); setShowPromptModal(true); }}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
               >
                 {t.createPrompt}

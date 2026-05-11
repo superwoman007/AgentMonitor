@@ -510,6 +510,21 @@ async function initSchema(db: Database.Database): Promise<void> {
   if (!columnExists(db, 'model_configs', 'base_url')) {
     db.exec(`ALTER TABLE model_configs ADD COLUMN base_url TEXT`);
   }
+  if (!columnExists(db, 'model_configs', 'updated_at')) {
+    db.exec(`ALTER TABLE model_configs ADD COLUMN updated_at TEXT`);
+  }
+  if (!columnExists(db, 'evaluation_experiments', 'prompt_id')) {
+    db.exec(`ALTER TABLE evaluation_experiments ADD COLUMN prompt_id TEXT REFERENCES prompts(id) ON DELETE SET NULL`);
+  }
+  if (!columnExists(db, 'evaluation_experiments', 'prompt_version_id')) {
+    db.exec(`ALTER TABLE evaluation_experiments ADD COLUMN prompt_version_id TEXT REFERENCES prompt_versions(id) ON DELETE SET NULL`);
+  }
+  if (!columnExists(db, 'evaluation_experiments', 'target_model_config_id')) {
+    db.exec(`ALTER TABLE evaluation_experiments ADD COLUMN target_model_config_id TEXT REFERENCES model_configs(id) ON DELETE SET NULL`);
+  }
+  if (!columnExists(db, 'evaluation_experiments', 'run_config')) {
+    db.exec(`ALTER TABLE evaluation_experiments ADD COLUMN run_config TEXT`);
+  }
   if (!columnExists(db, 'evaluators', 'model_config_id')) {
     db.exec(`ALTER TABLE evaluators ADD COLUMN model_config_id TEXT REFERENCES model_configs(id) ON DELETE SET NULL`);
   }
@@ -531,6 +546,7 @@ async function initSchema(db: Database.Database): Promise<void> {
     CREATE TABLE IF NOT EXISTS trace_eval_results (
       id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
       trace_id TEXT NOT NULL REFERENCES traces(id) ON DELETE CASCADE,
+      span_id TEXT REFERENCES spans(span_id) ON DELETE SET NULL,
       evaluator TEXT,
       score REAL,
       passed INTEGER,
@@ -538,7 +554,11 @@ async function initSchema(db: Database.Database): Promise<void> {
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
+  if (!columnExists(db, 'trace_eval_results', 'span_id')) {
+    db.exec(`ALTER TABLE trace_eval_results ADD COLUMN span_id TEXT REFERENCES spans(span_id) ON DELETE SET NULL`);
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_trace_eval_results_trace ON trace_eval_results(trace_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_trace_eval_results_span ON trace_eval_results(span_id)`);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_feedbacks (

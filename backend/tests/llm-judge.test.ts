@@ -1,6 +1,18 @@
+import { vi, describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
+
+// Mock callLLM to avoid real API calls during tests
+vi.mock('../src/services/llm-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/services/llm-client.js')>('../src/services/llm-client.js');
+  return {
+    ...actual,
+    callLLM: vi.fn(),
+  };
+});
+
+import { callLLM } from '../src/services/llm-client.js';
 
 describe('LLM Judge Evaluator', () => {
   let app: FastifyInstance;
@@ -114,7 +126,22 @@ describe('LLM Judge Evaluator', () => {
 
   describe('LLM Judge experiment execution', () => {
     it('should run experiment with llm_judge and fallback to heuristic', async () => {
-      // Create evaluator without model_config (will fallback)
+      // Create a model config to serve as target
+      const cfgRes = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Target Model',
+          provider: 'openai',
+          model: 'gpt-4',
+          api_key: 'sk-test-key',
+          base_url: 'https://api.openai.com/v1',
+        })
+        .expect(201);
+      const targetModelConfigId = cfgRes.body.id;
+
+      // Create evaluator without model_config (will fallback to heuristic)
       await request(app.server)
         .post('/api/evaluation/evaluators')
         .set('Authorization', `Bearer ${authToken}`)
@@ -126,7 +153,11 @@ describe('LLM Judge Evaluator', () => {
         })
         .expect(201);
 
-      // Create experiment
+      // Mock LLM response for target model
+      const mockedCallLLM = vi.mocked(callLLM);
+      mockedCallLLM.mockResolvedValue({ content: 'test output', usage: { total_tokens: 10 } });
+
+      // Create experiment WITH target model config
       const expRes = await request(app.server)
         .post('/api/evaluation/experiments')
         .set('Authorization', `Bearer ${authToken}`)
@@ -134,6 +165,7 @@ describe('LLM Judge Evaluator', () => {
           project_id: projectId,
           name: 'LLM Judge Experiment',
           dataset_id: datasetId,
+          target_model_config_id: targetModelConfigId,
         })
         .expect(201);
 
@@ -146,6 +178,7 @@ describe('LLM Judge Evaluator', () => {
         .expect(200);
 
       expect(startRes.body).toHaveProperty('status');
+      expect(startRes.body.status).toBe('completed');
 
       // Check results
       const resultsRes = await request(app.server)
