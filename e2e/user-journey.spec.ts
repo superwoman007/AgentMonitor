@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 test.describe('完整用户旅程 (Staging适配版)', () => {
@@ -15,10 +15,10 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     await page.goto(`${BASE_URL}/register`);
     
     // 等待页面加载
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
     // 填写注册表单
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     // 使用 nth 选择器区分两个密码输入框
@@ -45,9 +45,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -80,9 +80,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -109,9 +109,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -138,9 +138,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -167,9 +167,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -196,9 +196,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -225,9 +225,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -261,9 +261,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -299,9 +299,9 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
     
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -358,8 +358,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -408,8 +408,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -448,8 +448,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -488,8 +488,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -525,8 +525,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 先注册一个用户
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -599,8 +599,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -654,8 +654,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -709,8 +709,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -749,8 +749,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -794,8 +794,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -840,8 +840,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 2. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);
@@ -878,8 +878,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     
     // 1. 注册并登录
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);

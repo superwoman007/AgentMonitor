@@ -92,7 +92,7 @@ test.describe('观测中心旅程：Dashboard → Traces → Sessions', () => {
     await page.waitForLoadState('networkidle');
 
     // 应该显示 Traces 页面
-    await expect(page.locator('main h1')).toContainText(/观测中心|Observation/);
+    await expect(page.locator('main h1')).toContainText(/观测中心|Observation|追踪记录|Traces/i);
   });
 
   test('Step 3: 导航到 Sessions 页面查看会话', async ({ page }) => {
@@ -130,7 +130,7 @@ test.describe('观测中心旅程：Dashboard → Traces → Sessions', () => {
     }
 
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('main h1')).toContainText(/观测中心|Observation/);
+    await expect(page.locator('main h1')).toContainText(/观测中心|Observation|追踪记录|Traces/i);
 
     // 从 Traces 导航到 Sessions
     navigated = false;

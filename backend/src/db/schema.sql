@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS traces (
   latency_ms INTEGER,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   error TEXT,
+  prompt_id UUID REFERENCES prompts(id) ON DELETE SET NULL,
+  prompt_version_id UUID REFERENCES prompt_versions(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -109,6 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_traces_project_id ON traces(project_id);
 CREATE INDEX IF NOT EXISTS idx_traces_session_id ON traces(session_id);
 CREATE INDEX IF NOT EXISTS idx_traces_started_at ON traces(started_at);
 CREATE INDEX IF NOT EXISTS idx_traces_status ON traces(status);
+CREATE INDEX IF NOT EXISTS idx_traces_prompt_id ON traces(prompt_id);
 
 -- ============================================
 -- 监控指标表

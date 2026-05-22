@@ -10,8 +10,8 @@ test.describe('P2 功能深度测试 (Phase 2 - 自动化闭环)', () => {
   async function registerAndLogin(page: any) {
     const testEmail = generateTestEmail();
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    await page.fill('input[placeholder="John Doe"]', 'E2E P2 Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+    await page.fill('input[type="text"]', 'E2E P2 Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     const passwordInputs = page.locator('input[type="password"]');
     await passwordInputs.nth(0).fill(testPassword);

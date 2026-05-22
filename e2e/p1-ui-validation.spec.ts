@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 
 test.describe('P1 功能 UI 验证', () => {
   const generateTestEmail = () => `e2e-p1-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
@@ -10,9 +10,9 @@ test.describe('P1 功能 UI 验证', () => {
     const testEmail = generateTestEmail();
     
     await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    
-    await page.fill('input[placeholder="John Doe"]', 'E2E P1 Test User');
+    await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+
+    await page.fill('input[type="text"]', 'E2E P1 Test User');
     await page.fill('input[placeholder="user@example.com"]', testEmail);
     
     const passwordInputs = page.locator('input[type="password"]');
@@ -73,7 +73,9 @@ test.describe('P1 功能 UI 验证', () => {
     await registerAndLogin(page);
     
     // 先创建一个测试会话（通过 API）
-    const token = await page.evaluate(() => localStorage.getItem('token'));
+    const token = await page.evaluate(() => {
+      try { return JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.token; } catch { return null; }
+    });
     
     if (token) {
       // 使用 API 创建项目和会话
@@ -139,16 +141,9 @@ test.describe('P1 功能 UI 验证', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     
-    // 查找创建按钮或评估列表
-    const createButton = page.locator('button').filter({ hasText: /创建|新建|Add|Create/i }).first();
-    const evaluationList = page.locator('table, [role="list"], [class*="list"]').first();
-    
-    const hasCreateButton = await createButton.isVisible().catch(() => false);
-    const hasEvaluationList = await evaluationList.isVisible().catch(() => false);
-    
-    // 至少有一个元素存在
-    expect(hasCreateButton || hasEvaluationList || true).toBe(true);
-    await expect(page.locator('body')).toBeVisible();
+    // 质量评估页面是仪表盘，显示评分卡片而非创建按钮/列表
+    const scoreCard = page.locator('[class*="rounded"], [class*="border"], h1, h3').first();
+    await expect(scoreCard).toBeVisible({ timeout: 10000 });
   });
 
   test('P1-UI-7: 会话列表页面 - 正常加载', async ({ page }) => {

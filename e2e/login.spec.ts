@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:5174';
-const API_URL = 'http://localhost:3000/api/v1';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
+const API_URL = `${process.env.API_URL || 'http://localhost:3000'}/api/v1`;
 
 test.describe('登录功能 E2E 测试', () => {
   test('登录页面可正常加载，不会循环刷新', async ({ page }) => {

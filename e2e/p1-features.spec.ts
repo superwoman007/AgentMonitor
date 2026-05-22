@@ -1,44 +1,81 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 test.describe('P1 功能深度测试', () => {
   const generateTestEmail = () => `e2e-p1-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
   const testPassword = 'Test123456!';
+  let sharedToken: string;
+  let sharedEmail: string;
+  let sharedSessionId: string;
 
-  // 辅助函数：注册并登录
-  async function registerAndLogin(page: any) {
-    const testEmail = generateTestEmail();
-    
-    await page.goto(`${BASE_URL}/register`);
-    await page.waitForSelector('input[placeholder="John Doe"]', { timeout: 10000 });
-    
-    await page.fill('input[placeholder="John Doe"]', 'E2E P1 Test User');
-    await page.fill('input[placeholder="user@example.com"]', testEmail);
-    
-    const passwordInputs = page.locator('input[type="password"]');
-    await passwordInputs.nth(0).fill(testPassword);
-    await passwordInputs.nth(1).fill(testPassword);
-    
-    await page.click('button:has-text("注册")');
-    await page.waitForURL(`${BASE_URL}/dashboard`, { timeout: 15000 });
-    
-    return testEmail;
+  test.beforeAll(async ({ request }) => {
+    sharedEmail = generateTestEmail();
+    const regRes = await request.post(`${API_URL}/api/v1/auth/register`, {
+      data: { name: 'P1 Test User', email: sharedEmail, password: testPassword }
+    });
+    const regData = await regRes.json();
+    sharedToken = regData.token;
+
+    const projRes = await request.post(`${API_URL}/api/v1/projects`, {
+      headers: { Authorization: `Bearer ${sharedToken}` },
+      data: { name: 'P1 Test Project', description: 'seed' }
+    });
+    const projData = await projRes.json();
+    const projectId = projData.project?.id || projData.id;
+
+    const apiKeyRes = await request.post(`${API_URL}/api/v1/apikeys`, {
+      headers: { Authorization: `Bearer ${sharedToken}` },
+      data: { project_id: projectId, name: 'p1-test-key' }
+    });
+    const apiKeyData = await apiKeyRes.json();
+    const apiKey = apiKeyData.apiKey?.key || apiKeyData.key;
+
+    const sessRes = await request.post(`${API_URL}/api/v1/sessions`, {
+      headers: { 'x-api-key': apiKey },
+      data: { project_id: projectId, session_id: `p1-sess-${Date.now()}`, name: 'P1 Test Session' }
+    });
+    const sessData = await sessRes.json();
+    sharedSessionId = sessData.session?.id || sessData.id;
+
+    for (let i = 0; i < 3; i++) {
+      await request.post(`${API_URL}/api/v1/traces`, {
+        headers: { 'x-api-key': apiKey },
+        data: {
+          project_id: projectId,
+          session_id: sharedSessionId,
+          trace_type: 'llm',
+          name: `p1-trace-${i}`,
+          input: { prompt: `test ${i}` },
+          output: { response: `response ${i}` },
+          started_at: new Date().toISOString(),
+          ended_at: new Date().toISOString(),
+          latency_ms: 100,
+          status: 'success',
+        }
+      });
+    }
+  });
+
+  async function loginWithSharedUser(page: any) {
+    await page.goto(`${BASE_URL}/login`);
+    await page.evaluate(([t]: [string]) => {
+      localStorage.setItem('auth-storage', JSON.stringify({ state: { token: t, user: null } }));
+    }, [sharedToken]);
+    await page.reload();
   }
 
   test('P1-1: 会话回放 - 时间轴视图切换', async ({ page }) => {
-    await registerAndLogin(page);
-    
-    // 进入会话列表
+    await loginWithSharedUser(page);
+
     await page.goto(`${BASE_URL}/sessions`);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
-    
-    // 查找第一个会话（如果存在）
+
     const firstSession = page.locator('a[href^="/sessions/"]').first();
     const hasSession = await firstSession.isVisible().catch(() => false);
-    
+
     if (hasSession) {
       await firstSession.click();
       await page.waitForURL(/\/sessions\//, { timeout: 10000 });
@@ -71,7 +108,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-2: 会话回放 - 消息展开/折叠', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/sessions`);
     await page.waitForLoadState('networkidle');
@@ -109,7 +146,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-3: 会话回放 - Token 和延迟显示', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/sessions`);
     await page.waitForLoadState('networkidle');
@@ -141,7 +178,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-4: 断点调试 - 创建断点', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     // 进入断点调试页面
     await page.goto(`${BASE_URL}/debugging`);
@@ -194,7 +231,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-5: 断点调试 - 启用/禁用断点', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/debugging`);
     await page.waitForLoadState('networkidle');
@@ -220,7 +257,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-6: 断点调试 - 查看 Snapshots', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/debugging`);
     await page.waitForLoadState('networkidle');
@@ -251,7 +288,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-7: 质量评估 - 查看评估列表', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/quality`);
     await page.waitForLoadState('networkidle');
@@ -288,7 +325,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-8: 质量评估 - 创建评估', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/quality`);
     await page.waitForLoadState('networkidle');
@@ -322,7 +359,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-9: 质量评估 - 评估维度显示', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     await page.goto(`${BASE_URL}/quality`);
     await page.waitForLoadState('networkidle');
@@ -352,7 +389,7 @@ test.describe('P1 功能深度测试', () => {
   });
 
   test('P1-10: 集成测试 - 完整 P1 工作流', async ({ page }) => {
-    await registerAndLogin(page);
+    await loginWithSharedUser(page);
     
     // 1. 创建断点
     await page.goto(`${BASE_URL}/debugging`);
