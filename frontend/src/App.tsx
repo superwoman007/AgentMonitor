@@ -1,26 +1,29 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { i18n, Lang, TranslationKey } from './i18n';
+import { i18n, Lang } from './i18n';
 import { useAuthStore } from './stores/authStore';
 import { useProjectStore } from './stores/projectStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
-import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { SessionsPage } from './pages/SessionsPage';
-import { SessionDetailPage } from './pages/SessionDetailPage';
-import { DebuggingPage } from './pages/DebuggingPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { QualityPage } from './pages/QualityPage';
-import { CostPage } from './pages/CostPage';
-import { AlertsPage } from './pages/AlertsPage';
-import { DecisionsPage } from './pages/DecisionsPage';
-import { EvaluationPage } from './pages/EvaluationPage';
-import { PromptsPage } from './pages/PromptsPage';
-import { TracesPage } from './pages/TracesPage';
-import { TraceDetailPage } from './pages/TraceDetailPage';
-import { ModelConfigsPage } from './pages/ModelConfigsPage';
-import { FeedbackPage } from './pages/FeedbackPage';
+// Lazy-loaded pages for code splitting
+const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const RegisterPage = lazy(() => import('./pages/RegisterPage').then(m => ({ default: m.RegisterPage })));
+const DashboardPage = lazy(() => import('./pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const SessionsPage = lazy(() => import('./pages/SessionsPage').then(m => ({ default: m.SessionsPage })));
+const SessionDetailPage = lazy(() => import('./pages/SessionDetailPage').then(m => ({ default: m.SessionDetailPage })));
+const DebuggingPage = lazy(() => import('./pages/DebuggingPage').then(m => ({ default: m.DebuggingPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const QualityPage = lazy(() => import('./pages/QualityPage').then(m => ({ default: m.QualityPage })));
+const CostPage = lazy(() => import('./pages/CostPage').then(m => ({ default: m.CostPage })));
+const AlertsPage = lazy(() => import('./pages/AlertsPage').then(m => ({ default: m.AlertsPage })));
+const DecisionsPage = lazy(() => import('./pages/DecisionsPage').then(m => ({ default: m.DecisionsPage })));
+const EvaluationPage = lazy(() => import('./pages/EvaluationPage').then(m => ({ default: m.EvaluationPage })));
+const PromptsPage = lazy(() => import('./pages/PromptsPage').then(m => ({ default: m.PromptsPage })));
+const TracesPage = lazy(() => import('./pages/TracesPage').then(m => ({ default: m.TracesPage })));
+const TraceDetailPage = lazy(() => import('./pages/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })));
+const ModelConfigsPage = lazy(() => import('./pages/ModelConfigsPage').then(m => ({ default: m.ModelConfigsPage })));
+const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then(m => ({ default: m.FeedbackPage })));
+
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 interface TranslationContextType {
@@ -39,25 +42,24 @@ export function useTranslation() {
   return useContext(TranslationContext);
 }
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-64">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>
+  );
+}
+
 function TranslationProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => {
-    try {
-      const stored = localStorage.getItem('lang');
-      return stored === 'en' || stored === 'zh' ? stored : 'zh';
-    } catch {
-      return 'zh';
-    }
+    return (localStorage.getItem('lang') as Lang) || 'zh';
   });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('lang', lang);
-    } catch {
-      return;
-    }
-  }, [lang]);
-
   const t = i18n[lang];
+
+  useEffect(() => {
+    localStorage.setItem('lang', lang);
+  }, [lang]);
 
   return (
     <TranslationContext.Provider value={{ t, lang, setLang }}>
@@ -67,160 +69,49 @@ function TranslationProvider({ children }: { children: ReactNode }) {
 }
 
 function AppRoutes() {
-  const { token, user, fetchUser } = useAuthStore();
-  const { ensureDefaultProject } = useProjectStore();
-
-  useEffect(() => {
-    if (token && !user) {
-      fetchUser();
-    }
-  }, [token, user, fetchUser]);
+  const { token } = useAuthStore();
+  const { fetchProjects } = useProjectStore();
 
   useEffect(() => {
     if (token) {
-      ensureDefaultProject();
+      fetchProjects();
     }
-  }, [token, ensureDefaultProject]);
+  }, [token, fetchProjects]);
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/sessions"
-        element={
-          <ProtectedRoute>
-            <SessionsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/sessions/:id"
-        element={
-          <ProtectedRoute>
-            <SessionDetailPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/decisions"
-        element={
-          <ProtectedRoute>
-            <DecisionsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/prompts"
-        element={
-          <ProtectedRoute>
-            <PromptsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/model-configs"
-        element={
-          <ProtectedRoute>
-            <ModelConfigsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/traces"
-        element={
-          <ProtectedRoute>
-            <TracesPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/traces/:id"
-        element={
-          <ProtectedRoute>
-            <TraceDetailPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/feedback"
-        element={
-          <ProtectedRoute>
-            <FeedbackPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/evaluation"
-        element={
-          <ProtectedRoute>
-            <EvaluationPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/debugging"
-        element={
-          <ProtectedRoute>
-            <DebuggingPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/quality"
-        element={
-          <ProtectedRoute>
-            <QualityPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/cost"
-        element={
-          <ProtectedRoute>
-            <CostPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/alerts"
-        element={
-          <ProtectedRoute>
-            <AlertsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
+        <Route path="/sessions/:id" element={<ProtectedRoute><SessionDetailPage /></ProtectedRoute>} />
+        <Route path="/debugging" element={<ProtectedRoute><DebuggingPage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+        <Route path="/quality" element={<ProtectedRoute><QualityPage /></ProtectedRoute>} />
+        <Route path="/cost" element={<ProtectedRoute><CostPage /></ProtectedRoute>} />
+        <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
+        <Route path="/decisions" element={<ProtectedRoute><DecisionsPage /></ProtectedRoute>} />
+        <Route path="/evaluation" element={<ProtectedRoute><EvaluationPage /></ProtectedRoute>} />
+        <Route path="/prompts" element={<ProtectedRoute><PromptsPage /></ProtectedRoute>} />
+        <Route path="/traces" element={<ProtectedRoute><TracesPage /></ProtectedRoute>} />
+        <Route path="/traces/:id" element={<ProtectedRoute><TraceDetailPage /></ProtectedRoute>} />
+        <Route path="/model-configs" element={<ProtectedRoute><ModelConfigsPage /></ProtectedRoute>} />
+        <Route path="/feedback" element={<ProtectedRoute><FeedbackPage /></ProtectedRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <ErrorBoundary>
       <TranslationProvider>
-        <AppRoutes />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </TranslationProvider>
-    </BrowserRouter>
+    </ErrorBoundary>
   );
 }
-
-export { i18n };
-export type { Lang, TranslationKey };

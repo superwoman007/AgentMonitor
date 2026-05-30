@@ -14,7 +14,7 @@ describe('Auth API', () => {
     
     // 生成唯一测试邮箱
     testEmail = `test-${Date.now()}@example.com`;
-    testPassword = 'Test123456!';
+    testPassword = 'Test12345678!';
   });
 
   afterAll(async () => {

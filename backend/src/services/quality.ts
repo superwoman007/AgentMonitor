@@ -36,41 +36,73 @@ export function calculateSuccessScore(status: string): number {
 }
 
 export async function getQualityScore(projectId: string): Promise<QualityScore> {
-  const traces = await query<Trace>(
-    `SELECT * FROM traces 
-     WHERE project_id = $1 
-     AND status != 'pending'
-     ORDER BY started_at DESC
-     LIMIT 1000`,
+  const isSqlite = config.dbType === 'sqlite';
+
+  // Use SQL aggregation instead of loading all traces into memory
+  const result = await query<{
+    total_count: number;
+    success_count: number;
+    avg_latency: number | null;
+    fast_count: number;    // < 500ms
+    medium_count: number;  // 500-2000ms
+    slow_count: number;    // 2000-5000ms
+    very_slow_count: number; // > 5000ms
+  }>(
+    isSqlite
+      ? `SELECT
+          COUNT(*) as total_count,
+          SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
+          AVG(latency_ms) as avg_latency,
+          SUM(CASE WHEN latency_ms < 500 THEN 1 ELSE 0 END) as fast_count,
+          SUM(CASE WHEN latency_ms >= 500 AND latency_ms < 2000 THEN 1 ELSE 0 END) as medium_count,
+          SUM(CASE WHEN latency_ms >= 2000 AND latency_ms < 5000 THEN 1 ELSE 0 END) as slow_count,
+          SUM(CASE WHEN latency_ms >= 5000 THEN 1 ELSE 0 END) as very_slow_count
+         FROM traces
+         WHERE project_id = $1 AND status != 'pending'
+         ORDER BY started_at DESC
+         LIMIT 1000`
+      : `SELECT
+          COUNT(*) as total_count,
+          COUNT(*) FILTER (WHERE status = 'success') as success_count,
+          AVG(latency_ms) as avg_latency,
+          COUNT(*) FILTER (WHERE latency_ms < 500) as fast_count,
+          COUNT(*) FILTER (WHERE latency_ms >= 500 AND latency_ms < 2000) as medium_count,
+          COUNT(*) FILTER (WHERE latency_ms >= 2000 AND latency_ms < 5000) as slow_count,
+          COUNT(*) FILTER (WHERE latency_ms >= 5000) as very_slow_count
+         FROM (
+           SELECT latency_ms, status FROM traces
+           WHERE project_id = $1 AND status != 'pending'
+           ORDER BY started_at DESC
+           LIMIT 1000
+         ) sub`,
     [projectId]
   );
 
-  if (traces.length === 0) {
-    return {
-      score: 0,
-      speedScore: 0,
-      successScore: 0,
-      totalTraces: 0,
-    };
+  const row = result[0];
+  if (!row || row.total_count === 0) {
+    return { score: 0, speedScore: 0, successScore: 0, totalTraces: 0 };
   }
 
-  let totalSpeedScore = 0;
-  let totalSuccessScore = 0;
+  const total = row.total_count;
+  const nullLatencyCount = total - (row.fast_count + row.medium_count + row.slow_count + row.very_slow_count);
 
-  for (const trace of traces) {
-    totalSpeedScore += calculateSpeedScore(trace.latency_ms);
-    totalSuccessScore += calculateSuccessScore(trace.status);
-  }
+  // Weighted speed score based on latency distribution
+  const avgSpeedScore = (
+    (row.fast_count * 100) +
+    (row.medium_count * 80) +
+    (row.slow_count * 50) +
+    (row.very_slow_count * 20) +
+    (nullLatencyCount * 50)
+  ) / total;
 
-  const avgSpeedScore = totalSpeedScore / traces.length;
-  const avgSuccessScore = totalSuccessScore / traces.length;
+  const avgSuccessScore = (row.success_count / total) * 100;
   const finalScore = Math.round(avgSpeedScore * 0.6 + avgSuccessScore * 0.4);
 
   return {
     score: finalScore,
     speedScore: Math.round(avgSpeedScore),
     successScore: Math.round(avgSuccessScore),
-    totalTraces: traces.length,
+    totalTraces: total,
   };
 }
 

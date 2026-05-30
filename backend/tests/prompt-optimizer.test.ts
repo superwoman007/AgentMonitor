@@ -31,7 +31,7 @@ describe('Prompt Optimizer API (PM-04)', () => {
     const testEmail = `test-prompt-optimizer-${Date.now()}@example.com`;
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Prompt Optimizer Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Prompt Optimizer Test User' });
     authToken = registerResponse.body.token;
 
     const projectResponse = await request(app.server)

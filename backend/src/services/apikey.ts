@@ -28,22 +28,27 @@ export async function createApiKey(
   const encryptedKey = encrypt(plainKey);
   const prefix = plainKey.slice(0, 10) + '...';
   const keyId = uuidv4();
-  
+
+  // Calculate expiration date
+  const expirationDays = config.security.apiKeyExpirationDays;
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + expirationDays);
+
   await run(
-    `INSERT INTO api_keys (id, project_id, name, key_hash, prefix, encrypted_key)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [keyId, projectId, name, keyHash, prefix, encryptedKey]
+    `INSERT INTO api_keys (id, project_id, name, key_hash, prefix, encrypted_key, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [keyId, projectId, name, keyHash, prefix, encryptedKey, expiresAt.toISOString()]
   );
-  
+
   const apiKey = await queryOne<ApiKey>(
     'SELECT * FROM api_keys WHERE id = $1',
     [keyId]
   );
-  
+
   if (!apiKey) {
     throw new Error('Failed to create API key');
   }
-  
+
   return {
     ...apiKey,
     key: plainKey,  // 测试期望 key 字段
@@ -124,31 +129,36 @@ export async function revokeApiKey(keyId: string, userId: string): Promise<{ suc
   return { success: true };
 }
 
-export async function verifyApiKey(plainKey: string): Promise<{ valid: boolean; projectId?: string }> {
+export async function verifyApiKey(plainKey: string): Promise<{ valid: boolean; projectId?: string; expired?: boolean }> {
   if (!plainKey.startsWith('am_')) {
     return { valid: false };
   }
-  
+
   const keyHash = hashApiKey(plainKey);
-  
-  const apiKey = await queryOne<ApiKey>(
+
+  const apiKey = await queryOne<ApiKey & { expires_at?: string }>(
     `SELECT ak.*, p.id as project_id
      FROM api_keys ak
      JOIN projects p ON ak.project_id = p.id
      WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL`,
     [keyHash]
   );
-  
+
   if (!apiKey) {
     return { valid: false };
   }
-  
+
+  // Check expiration
+  if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
+    return { valid: false, expired: true };
+  }
+
   const nowExpr = config.dbType === 'sqlite' ? "datetime('now')" : 'NOW()';
   await run(
     `UPDATE api_keys SET last_used_at = ${nowExpr} WHERE id = $1`,
     [apiKey.id]
   );
-  
+
   return { valid: true, projectId: apiKey.project_id };
 }
 

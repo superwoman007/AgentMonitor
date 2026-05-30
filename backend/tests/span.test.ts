@@ -10,7 +10,7 @@ describe('Span Service (TDD)', () => {
   let projectId: string;
 
   beforeAll(async () => {
-    const auth = await register(`span-test-${Date.now()}@example.com`, 'Test123456!', 'Span Test');
+    const auth = await register(`span-test-${Date.now()}@example.com`, 'Test12345678!', 'Span Test');
     const project = await createProject(auth.user.id, 'Span Test Project');
     projectId = project.id;
   });

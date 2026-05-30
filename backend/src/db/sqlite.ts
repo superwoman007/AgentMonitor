@@ -451,6 +451,9 @@ async function initSchema(db: Database.Database): Promise<void> {
   if (!columnExists(db, 'api_keys', 'revoked_at')) {
     db.exec(`ALTER TABLE api_keys ADD COLUMN revoked_at TEXT`);
   }
+  if (!columnExists(db, 'api_keys', 'expires_at')) {
+    db.exec(`ALTER TABLE api_keys ADD COLUMN expires_at TEXT`);
+  }
   if (!columnExists(db, 'traces', 'parent_trace_id')) {
     db.exec(`ALTER TABLE traces ADD COLUMN parent_trace_id TEXT REFERENCES traces(id) ON DELETE SET NULL`);
   }
@@ -629,6 +632,15 @@ async function initSchema(db: Database.Database): Promise<void> {
     db.pragma('foreign_keys = ON');
     db.exec(`CREATE TABLE _migration_p001_spans (completed_at TEXT DEFAULT (datetime('now')))`);
   }
+
+  // Performance indexes (composite)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_traces_project_status ON traces(project_id, status);
+    CREATE INDEX IF NOT EXISTS idx_traces_project_type ON traces(project_id, trace_type);
+    CREATE INDEX IF NOT EXISTS idx_traces_project_started ON traces(project_id, started_at);
+    CREATE INDEX IF NOT EXISTS idx_traces_trace_span ON traces(trace_id, span_id);
+    CREATE INDEX IF NOT EXISTS idx_spans_trace_span ON spans(trace_id, span_id);
+  `);
 
   console.log('✅ SQLite schema initialized');
 }

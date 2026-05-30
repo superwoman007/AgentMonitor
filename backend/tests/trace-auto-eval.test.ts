@@ -16,7 +16,7 @@ describe('Trace Auto-Eval API', () => {
     const testEmail = `test-auto-eval-${Date.now()}@example.com`;
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Auto Eval Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Auto Eval Test User' });
 
     authToken = registerResponse.body.token;
 

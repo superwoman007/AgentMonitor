@@ -19,7 +19,7 @@ describe('Evaluation Center Enhanced API', () => {
 
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Eval Enhanced Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Eval Enhanced Test User' });
     authToken = registerResponse.body.token;
 
     const projectResponse = await request(app.server)

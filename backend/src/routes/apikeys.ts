@@ -52,7 +52,6 @@ export async function apikeysRoutes(app: FastifyInstance): Promise<void> {
     }
     
     const apiKeys = await getApiKeysByProject(query.project_id);
-    console.log('API Keys response:', JSON.stringify(apiKeys, null, 2));
     reply.send(apiKeys);
   });
   

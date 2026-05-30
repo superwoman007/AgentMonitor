@@ -15,7 +15,7 @@ describe('User Feedback API', () => {
     const testEmail = `test-feedback-${Date.now()}@example.com`;
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Feedback Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Feedback Test User' });
 
     authToken = registerResponse.body.token;
 

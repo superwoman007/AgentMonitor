@@ -74,8 +74,9 @@ export const useAuthStore = create<AuthState>()(
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
         try {
-          const { token, user } = await api.auth.login({ email, password });
+          const { token, refreshToken, user } = await api.auth.login({ email, password });
           api.setAuthToken(token);
+          api.setAuthRefreshToken(refreshToken);
           set({ token, user, isLoading: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Login failed';
@@ -87,8 +88,9 @@ export const useAuthStore = create<AuthState>()(
       register: async (email: string, password: string, name?: string) => {
         set({ isLoading: true, error: null });
         try {
-          const { token, user } = await api.auth.register({ email, password, name });
+          const { token, refreshToken, user } = await api.auth.register({ email, password, name });
           api.setAuthToken(token);
+          api.setAuthRefreshToken(refreshToken);
           set({ token, user, isLoading: false });
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Registration failed';

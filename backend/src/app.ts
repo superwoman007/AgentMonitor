@@ -1,6 +1,8 @@
 import Fastify, { FastifyError } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
+import { randomUUID } from 'crypto';
 import { config } from './config.js';
 import { authRoutes } from './routes/auth.js';
 import { tracesRoutes } from './routes/traces.js';
@@ -26,18 +28,43 @@ import { spansRoutes } from './routes/spans.js';
 export async function buildApp() {
   const app = Fastify({
     logger: {
-      level: config.nodeEnv === 'production' ? 'info' : 'debug',
+      level: config.isProduction ? 'info' : 'debug',
     },
+    genReqId: () => randomUUID(),
+    trustProxy: config.isProduction,
   });
-  
+
+  // Request ID propagation
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('X-Request-Id', request.id);
+  });
+
+  // Security headers for all API responses
+  app.addHook('onSend', async (_request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('X-XSS-Protection', '0');
+    reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    reply.header('Cache-Control', 'no-store');
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  });
+
+  // CORS - restricted in production
   await app.register(cors, {
-    origin: true,
+    origin: config.cors.origins,
+    credentials: true,
   });
-  
+
+  // Rate limiting
+  await app.register(rateLimit, {
+    max: config.rateLimit.global.max,
+    timeWindow: config.rateLimit.global.timeWindow,
+  });
+
   await app.register(websocket);
-  
+
   app.get('/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));
-  
+
   await app.register(authRoutes, { prefix: `${config.api.prefix}/auth` });
   await app.register(tracesRoutes, { prefix: `${config.api.prefix}/traces` });
   await app.register(sessionsRoutes, { prefix: `${config.api.prefix}/sessions` });
@@ -58,19 +85,28 @@ export async function buildApp() {
   await app.register(feedbackRoutes, { prefix: `${config.api.prefix}/feedbacks` });
   await app.register(spansRoutes, { prefix: `${config.api.prefix}/spans` });
   await app.register(wsRoutes);
-  
+
   app.setErrorHandler((error: FastifyError, request, reply) => {
-    app.log.error({ error }, 'Unhandled error');
-    
+    request.log.error({ err: error, requestId: request.id }, 'Unhandled error');
+
     if (error.validation) {
-      reply.code(400).send({ error: 'Validation error', details: error.validation });
+      reply.code(400).send({ error: 'Validation error', requestId: request.id });
       return;
     }
-    
-    reply.code(error.statusCode || 500).send({
+
+    const statusCode = error.statusCode || 500;
+
+    // In production, don't expose internal error details
+    if (config.isProduction && statusCode >= 500) {
+      reply.code(statusCode).send({ error: 'Internal server error', requestId: request.id });
+      return;
+    }
+
+    reply.code(statusCode).send({
       error: error.message || 'Internal server error',
+      requestId: request.id,
     });
   });
-  
+
   return app;
 }

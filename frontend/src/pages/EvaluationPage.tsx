@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useProjectStore } from '../stores/projectStore';
 import { api, Dataset, DatasetItem, Evaluator, EvaluationExperiment, EvaluatorTemplate, ExperimentProgress, AutoEvalTask, ModelConfig } from '../api';
@@ -24,7 +24,7 @@ export function EvaluationPage() {
   // Evaluators state
   const [evaluators, setEvaluators] = useState<Evaluator[]>([]);
   const [showEvaluatorModal, setShowEvaluatorModal] = useState(false);
-  const [evaluatorForm, setEvaluatorForm] = useState({ name: '', type: 'exact_match', description: '', config: '{}', model_config_id: '' });
+  const [evaluatorForm, setEvaluatorForm] = useState({ name: '', type: 'exact_match', description: '', config: '{}' });
 
   // Experiments state
   const [experiments, setExperiments] = useState<EvaluationExperiment[]>([]);
@@ -45,77 +45,10 @@ export function EvaluationPage() {
   });
   const [experimentProgress, setExperimentProgress] = useState<Record<string, ExperimentProgress>>({});
   const [evaluatorTemplates, setEvaluatorTemplates] = useState<EvaluatorTemplate[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     ensureDefaultProject();
   }, [ensureDefaultProject]);
-
-  // WebSocket for real-time experiment progress
-  useEffect(() => {
-    if (!currentProject) return;
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const isDev = !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
-    const wsHost = isDev ? `${window.location.hostname}:3000` : window.location.host;
-    const wsUrl = `${protocol}//${wsHost}/ws`;
-    let alive = true;
-    let retryTimer: number | undefined;
-
-    const connect = () => {
-      if (!alive) return;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        try {
-          ws.send(JSON.stringify({ type: 'subscribe', projectId: currentProject.id }));
-        } catch {
-          // ignore
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'experiment_progress' && data.experiment_id) {
-            setExperimentProgress((prev) => ({
-              ...prev,
-              [data.experiment_id]: {
-                experiment_id: data.experiment_id,
-                status: 'running',
-                total_items: data.total,
-                completed_items: data.current,
-                completion_rate: data.completion_rate,
-              },
-            }));
-          }
-        } catch {
-          // ignore parse errors
-        }
-      };
-
-      ws.onclose = () => {
-        if (!alive) return;
-        retryTimer = window.setTimeout(connect, 5000);
-      };
-
-      ws.onerror = () => {
-        if (!alive) return;
-      };
-    };
-
-    connect();
-
-    return () => {
-      alive = false;
-      if (retryTimer) window.clearTimeout(retryTimer);
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [currentProject?.id]);
 
   const fetchDatasets = async () => {
     if (!currentProject) return;
@@ -250,10 +183,9 @@ export function EvaluationPage() {
         type: evaluatorForm.type,
         description: evaluatorForm.description,
         config,
-        model_config_id: evaluatorForm.model_config_id || undefined,
       });
       setShowEvaluatorModal(false);
-      setEvaluatorForm({ name: '', type: 'exact_match', description: '', config: '{}', model_config_id: '' });
+      setEvaluatorForm({ name: '', type: 'exact_match', description: '', config: '{}' });
       fetchEvaluators();
     } catch (e) {
       console.error('Failed to create evaluator:', e);
@@ -618,7 +550,6 @@ export function EvaluationPage() {
                 <tr>
                   <th className="px-4 py-2 text-left">{t.evaluatorName}</th>
                   <th className="px-4 py-2 text-left">{t.evaluatorType}</th>
-                  <th className="px-4 py-2 text-left">{t.judgeModel}</th>
                   <th className="px-4 py-2 text-left">{t.description}</th>
                   <th className="px-4 py-2 text-right">{t.actions}</th>
                 </tr>
@@ -629,11 +560,6 @@ export function EvaluationPage() {
                     <td className="px-4 py-2 font-medium">{ev.name}</td>
                     <td className="px-4 py-2">
                       <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded">{ev.type}</span>
-                    </td>
-                    <td className="px-4 py-2 text-gray-500">
-                      {ev.type === 'llm_judge' && ev.model_config_id
-                        ? (modelConfigs.find(c => c.id === ev.model_config_id)?.name || ev.model_config_id.slice(0, 8))
-                        : '-'}
                     </td>
                     <td className="px-4 py-2 text-gray-500">{ev.description || '-'}</td>
                     <td className="px-4 py-2 text-right">
@@ -648,7 +574,7 @@ export function EvaluationPage() {
                 ))}
                 {evaluators.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">{t.noEvaluators}</td>
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">{t.noEvaluators}</td>
                   </tr>
                 )}
               </tbody>
@@ -1205,7 +1131,6 @@ export function EvaluationPage() {
                           type: tmpl.type,
                           description: tmpl.description,
                           config: JSON.stringify(tmpl.default_config, null, 2),
-                          model_config_id: '',
                         });
                       }
                     }}
@@ -1232,21 +1157,6 @@ export function EvaluationPage() {
                     <option value="similarity">similarity</option>
                   </select>
                 </div>
-                {evaluatorForm.type === 'llm_judge' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t.judgeModel}</label>
-                    <select
-                      value={evaluatorForm.model_config_id}
-                      onChange={(e) => setEvaluatorForm({ ...evaluatorForm, model_config_id: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    >
-                      <option value="">{t.judgeModelHint}</option>
-                      {modelConfigs.map((cfg) => (
-                        <option key={cfg.id} value={cfg.id}>{cfg.name} ({cfg.model})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t.description}</label>
                   <input

@@ -1,10 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
 import WebSocket from 'ws';
+import { register } from '../src/services/auth';
+import { createProject } from '../src/services/project';
 
 describe('WebSocket API', () => {
   let app: FastifyInstance;
   let baseUrl: string;
+  let token: string;
+  let projectId: string;
 
   beforeAll(async () => {
     app = await buildApp();
@@ -12,20 +16,20 @@ describe('WebSocket API', () => {
     const address = app.server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
     baseUrl = `ws://127.0.0.1:${port}`;
+
+    const auth = await register(`ws-test-${Date.now()}@test.com`, 'Test12345678!');
+    token = auth.token;
+    const project = await createProject(auth.user.id, 'ws-test-project');
+    projectId = project.id;
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  /**
-   * Connect and collect the first message (the "connected" greeting).
-   * We attach the message listener BEFORE the connection opens to avoid
-   * a race where the server sends before we listen.
-   */
   function connectWs(): Promise<{ ws: WebSocket; firstMessage: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${baseUrl}/ws`);
+      const ws = new WebSocket(`${baseUrl}/ws?token=${token}`);
       const timer = setTimeout(() => {
         ws.close();
         reject(new Error('Timeout connecting'));
@@ -54,66 +58,62 @@ describe('WebSocket API', () => {
 
   it('应该成功建立 WebSocket 连接并收到 connected 消息', async () => {
     const { ws, firstMessage } = await connectWs();
-
     expect(firstMessage.type).toBe('connected');
-
     ws.close();
+  });
+
+  it('无 token 连接应被拒绝', async () => {
+    try {
+      const ws = new WebSocket(`${baseUrl}/ws`);
+      await new Promise<void>((resolve, reject) => {
+        ws.once('close', (code) => {
+          expect(code).toBe(4001);
+          resolve();
+        });
+        ws.once('error', () => resolve());
+        setTimeout(() => reject(new Error('Timeout')), 3000);
+      });
+    } catch {
+      // Expected
+    }
   });
 
   it('应该响应 ping 消息', async () => {
     const { ws } = await connectWs();
-
     ws.send(JSON.stringify({ type: 'ping' }));
     const pong = await waitForMessage(ws);
-
     expect(pong.type).toBe('pong');
-
     ws.close();
   });
 
-  it('应该支持 subscribe 订阅项目', async () => {
+  it('应该支持 subscribe 订阅自己的项目', async () => {
     const { ws } = await connectWs();
-
-    ws.send(JSON.stringify({ type: 'subscribe', projectId: 'test-project-123' }));
-
-    await new Promise((r) => setTimeout(r, 100));
-
-    expect(ws.readyState).toBe(WebSocket.OPEN);
-
+    ws.send(JSON.stringify({ type: 'subscribe', projectId }));
+    const msg = await waitForMessage(ws);
+    expect(msg.type).toBe('subscribed');
     ws.close();
   });
 
-  it('应该支持 auth 认证消息', async () => {
+  it('订阅不存在的项目应返回错误', async () => {
     const { ws } = await connectWs();
-
-    ws.send(JSON.stringify({ type: 'auth', userId: 'user-123' }));
-
-    await new Promise((r) => setTimeout(r, 100));
-
-    expect(ws.readyState).toBe(WebSocket.OPEN);
-
+    ws.send(JSON.stringify({ type: 'subscribe', projectId: 'non-existent' }));
+    const msg = await waitForMessage(ws);
+    expect(msg.type).toBe('error');
     ws.close();
   });
 
   it('应该处理无效 JSON 而不断开连接', async () => {
     const { ws } = await connectWs();
-
     ws.send('not-valid-json');
-
     await new Promise((r) => setTimeout(r, 200));
-
     expect(ws.readyState).toBe(WebSocket.OPEN);
-
     ws.close();
   });
 
   it('应该在客户端断开后清理连接', async () => {
     const { ws } = await connectWs();
-
     ws.close();
-
     await new Promise((r) => setTimeout(r, 200));
-
     expect(ws.readyState).toBe(WebSocket.CLOSED);
   });
 

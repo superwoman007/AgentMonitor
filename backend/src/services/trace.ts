@@ -142,6 +142,11 @@ export async function getTracesByProject(
     status?: string;
     parentTraceId?: string;
     evalStatus?: string;
+    name?: string;
+    startDate?: string;
+    endDate?: string;
+    latencyMin?: number;
+    latencyMax?: number;
   }
 ): Promise<Trace[]> {
   const conditions: string[] = ['project_id = $1'];
@@ -172,6 +177,36 @@ export async function getTracesByProject(
     paramIndex++;
   }
 
+  if (options?.name) {
+    conditions.push(`LOWER(name) LIKE '%' || $${paramIndex} || '%'`);
+    params.push(options.name.toLowerCase());
+    paramIndex++;
+  }
+
+  if (options?.startDate) {
+    conditions.push(`started_at >= $${paramIndex}`);
+    params.push(options.startDate);
+    paramIndex++;
+  }
+
+  if (options?.endDate) {
+    conditions.push(`started_at <= $${paramIndex}`);
+    params.push(options.endDate);
+    paramIndex++;
+  }
+
+  if (options?.latencyMin !== undefined) {
+    conditions.push(`latency_ms >= $${paramIndex}`);
+    params.push(options.latencyMin);
+    paramIndex++;
+  }
+
+  if (options?.latencyMax !== undefined) {
+    conditions.push(`latency_ms <= $${paramIndex}`);
+    params.push(options.latencyMax);
+    paramIndex++;
+  }
+
   if (options?.evalStatus === 'needs_attention') {
     conditions.push(`(latest_eval_passed = 0 OR status = 'error')`);
   } else if (options?.evalStatus === 'passed') {
@@ -196,6 +231,15 @@ export async function getTracesByProject(
 
 export async function getTraceById(traceId: string): Promise<Trace | null> {
   return queryOne<Trace>('SELECT * FROM traces WHERE id = $1', [traceId]);
+}
+
+export async function getTracesByIds(traceIds: string[]): Promise<Trace[]> {
+  if (traceIds.length === 0) return [];
+  const placeholders = traceIds.map((_, i) => `$${i + 1}`).join(',');
+  return query<Trace>(
+    `SELECT * FROM traces WHERE id IN (${placeholders})`,
+    traceIds
+  );
 }
 
 export async function getChildTraces(parentTraceId: string): Promise<Trace[]> {

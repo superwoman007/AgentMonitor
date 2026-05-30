@@ -30,7 +30,7 @@ describe('Evaluation Center Phase 1 API', () => {
 
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Phase 1 Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Phase 1 Test User' });
     authToken = registerResponse.body.token;
 
     const projectResponse = await request(app.server)

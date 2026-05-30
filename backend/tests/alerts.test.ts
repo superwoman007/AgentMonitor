@@ -18,7 +18,7 @@ describe('Alerts API', () => {
       .post('/api/auth/register')
       .send({
         email: testEmail,
-        password: 'Test123456!',
+        password: 'Test12345678!',
         name: 'Alerts Test User',
       });
 

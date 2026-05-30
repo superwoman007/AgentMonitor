@@ -14,7 +14,7 @@ export function SessionDetailPage() {
   const [traces, setTraces] = useState<Trace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'timeline' | 'chat' | 'unified' | 'react' | 'agentLoop'>('timeline');
+  const [viewMode, setViewMode] = useState<'timeline' | 'chat' | 'unified' | 'react'>('timeline');
   const [timeline, setTimeline] = useState<TimelineItem[]>([]);
 
   const loadData = useCallback(async () => {
@@ -116,50 +116,6 @@ export function SessionDetailPage() {
     if (!latency) return null;
     if (latency < 1000) return `${latency}ms`;
     return `${(latency / 1000).toFixed(2)}s`;
-  };
-
-  // Build Agent Loop cycles from timeline
-  const buildAgentLoops = () => {
-    const loops: Array<{
-      id: number;
-      observation: TimelineItem | null;
-      thought: TimelineItem | null;
-      actions: TimelineItem[];
-    }> = [];
-    let currentLoop: {
-      id: number;
-      observation: TimelineItem | null;
-      thought: TimelineItem | null;
-      actions: TimelineItem[];
-    } | null = null;
-
-    for (const item of timeline) {
-      if (item.type === 'message' && (item.data as any).role === 'user') {
-        // New loop starts with user observation
-        if (currentLoop) {
-          loops.push(currentLoop);
-        }
-        currentLoop = { id: loops.length + 1, observation: item, thought: null, actions: [] };
-      } else if (item.type === 'message' && (item.data as any).role === 'assistant') {
-        // Assistant message is the thought
-        if (!currentLoop) {
-          currentLoop = { id: loops.length + 1, observation: null, thought: item, actions: [] };
-        } else {
-          currentLoop.thought = item;
-        }
-      } else if (item.type === 'tool_call' || item.type === 'trace') {
-        // Tool calls and traces are actions
-        if (!currentLoop) {
-          currentLoop = { id: loops.length + 1, observation: null, thought: null, actions: [item] };
-        } else {
-          currentLoop.actions.push(item);
-        }
-      }
-    }
-    if (currentLoop) {
-      loops.push(currentLoop);
-    }
-    return loops;
   };
 
   if (isLoading) {
@@ -298,14 +254,6 @@ export function SessionDetailPage() {
                   }`}
                 >
                   {t.reactFlow}
-                </button>
-                <button
-                  onClick={() => setViewMode('agentLoop')}
-                  className={`px-3 py-1 text-xs rounded ${
-                    viewMode === 'agentLoop' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {t.agentLoop}
                 </button>
               </div>
             </div>
@@ -486,80 +434,7 @@ export function SessionDetailPage() {
               )
             )}
 
-            {viewMode === 'agentLoop' && (
-              timeline.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
-              ) : (
-                <div className="space-y-8">
-                  {buildAgentLoops().map((loop) => (
-                    <div key={loop.id} className="border-2 border-purple-100 rounded-xl p-4 bg-purple-50/30">
-                      <div className="flex items-center gap-2 mb-4">
-                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
-                          Loop #{loop.id}
-                        </span>
-                      </div>
-                      <div className="space-y-4">
-                        {/* Observation */}
-                        {loop.observation && (
-                          <div className="border rounded-lg p-3 bg-green-50 border-green-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">{t.observation}</span>
-                              <span className="text-xs text-gray-400">{formatTime(loop.observation.timestamp)}</span>
-                            </div>
-                            <div className="text-sm whitespace-pre-wrap">{(loop.observation.data as any).content}</div>
-                          </div>
-                        )}
-                        {/* Thought */}
-                        {loop.thought && (
-                          <div className="border rounded-lg p-3 bg-purple-50 border-purple-200">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">{t.thought}</span>
-                              <span className="text-xs text-gray-400">{formatTime(loop.thought.timestamp)}</span>
-                            </div>
-                            <div className="text-sm whitespace-pre-wrap">{(loop.thought.data as any).content}</div>
-                          </div>
-                        )}
-                        {/* Actions */}
-                        {loop.actions.length > 0 && (
-                          <div className="space-y-2">
-                            {loop.actions.map((action, aidx) => (
-                              <div key={`${loop.id}-action-${aidx}`} className="border rounded-lg p-3 bg-blue-50 border-blue-200">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{t.action}</span>
-                                  <span className="text-xs text-gray-400">{formatTime(action.timestamp)}</span>
-                                </div>
-                                {action.type === 'tool_call' && (
-                                  <div className="space-y-1">
-                                    <div className="text-sm font-medium">{(action.data as any).tool_name}</div>
-                                    {(action.data as any).input && (
-                                      <pre className="text-xs bg-white p-2 rounded border overflow-auto max-h-24">{JSON.stringify((action.data as any).input, null, 2)}</pre>
-                                    )}
-                                    {(action.data as any).output && (
-                                      <pre className="text-xs bg-green-50 p-2 rounded border overflow-auto max-h-24">{JSON.stringify((action.data as any).output, null, 2)}</pre>
-                                    )}
-                                  </div>
-                                )}
-                                {action.type === 'trace' && (
-                                  <div className="space-y-1">
-                                    <div className="text-sm font-medium">{(action.data as any).name}</div>
-                                    <div className="text-xs text-gray-500">{(action.data as any).trace_type}</div>
-                                    {(action.data as any).latency_ms && (
-                                      <div className="text-xs text-orange-600">{formatLatency((action.data as any).latency_ms)}</div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-
-            {viewMode !== 'unified' && viewMode !== 'react' && viewMode !== 'agentLoop' && (
+            {viewMode !== 'unified' && viewMode !== 'react' && (
               messages.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">{t.noMessages}</div>
               ) : viewMode === 'timeline' ? (

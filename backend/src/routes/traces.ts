@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { createTrace, getTracesByProject, getTraceById, updateTrace, getTraceTree, getChildTraceCount, addTraceEvalResult, getTraceEvalResults, getTracesByPrompt } from '../services/trace.js';
+import { createTrace, getTracesByProject, getTraceById, getTracesByIds, updateTrace, getTraceTree, getChildTraceCount, addTraceEvalResult, getTraceEvalResults, getTracesByPrompt } from '../services/trace.js';
 import { evaluateTraceTrajectory, getTraceTrajectoryEvals } from '../services/trace-evaluation.js';
 import { getSpanTree } from '../services/span.js';
 import { checkBreakpoints } from '../services/breakpoint.js';
@@ -10,6 +10,20 @@ import { apikeyMiddleware } from '../middleware/apikey.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getProjectById } from '../services/project.js';
 import { broadcastToProject } from './ws.js';
+import { config } from '../config.js';
+
+function clampLimit(value: string | undefined, defaultVal = 50): number {
+  if (!value) return defaultVal;
+  const n = parseInt(value, 10);
+  if (isNaN(n) || n < 1) return defaultVal;
+  return Math.min(n, config.api.maxLimit);
+}
+
+function clampOffset(value: string | undefined): number {
+  if (!value) return 0;
+  const n = parseInt(value, 10);
+  return isNaN(n) || n < 0 ? 0 : n;
+}
 
 export async function tracesRoutes(app: FastifyInstance): Promise<void> {
   app.post('/', { preHandler: apikeyMiddleware }, async (request, reply) => {
@@ -178,29 +192,39 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
       status?: string;
       parentTraceId?: string;
       evalStatus?: string;
+      name?: string;
+      startDate?: string;
+      endDate?: string;
+      latencyMin?: string;
+      latencyMax?: string;
       limit?: string;
       offset?: string;
     };
-    
+
     if (!query.projectId) {
       reply.code(400).send({ error: 'projectId is required' });
       return;
     }
-    
+
     const project = await getProjectById(query.projectId);
     if (!project || project.user_id !== request.userId) {
       reply.code(404).send({ error: 'Project not found' });
       return;
     }
-    
+
     const traces = await getTracesByProject(query.projectId, {
       sessionId: query.sessionId,
       traceType: query.traceType,
       status: query.status,
       parentTraceId: query.parentTraceId,
       evalStatus: query.evalStatus,
-      limit: query.limit ? parseInt(query.limit, 10) : 50,
-      offset: query.offset ? parseInt(query.offset, 10) : 0,
+      name: query.name,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      latencyMin: query.latencyMin ? parseInt(query.latencyMin, 10) : undefined,
+      latencyMax: query.latencyMax ? parseInt(query.latencyMax, 10) : undefined,
+      limit: clampLimit(query.limit),
+      offset: clampOffset(query.offset),
     });
     
     reply.send({ traces });
@@ -619,13 +643,9 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
 
     let traces;
     if (body.traceIds && body.traceIds.length > 0) {
-      traces = [];
-      for (const id of body.traceIds) {
-        const trace = await getTraceById(id);
-        if (trace && trace.project_id === body.projectId) {
-          traces.push(trace);
-        }
-      }
+      // Batch query instead of N+1
+      const allTraces = await getTracesByIds(body.traceIds);
+      traces = allTraces.filter(t => t.project_id === body.projectId);
     } else if (body.filters) {
       traces = await getTracesByProject(body.projectId, {
         status: body.filters.status,

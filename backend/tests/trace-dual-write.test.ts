@@ -17,7 +17,7 @@ describe('Trace Dual-Write to Spans', () => {
 
   beforeAll(async () => {
     // 创建测试用户和项目
-    const auth = await register(`dualwrite-${Date.now()}@example.com`, 'Test123456!', 'DualWrite');
+    const auth = await register(`dualwrite-${Date.now()}@example.com`, 'Test12345678!', 'DualWrite');
     const project = await createProject(auth.user.id, 'Dual Write Project');
     projectId = project.id;
   });

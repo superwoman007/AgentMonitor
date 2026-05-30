@@ -28,8 +28,16 @@ const storage = (() => {
 })();
 
 class ApiClient {
+  private inflight = new Map<string, Promise<unknown>>();
+  private MAX_RETRIES = 2;
+  private RETRY_BASE_MS = 500;
+
   private getToken(): string | null {
     return storage.getItem('token');
+  }
+
+  private getRefreshToken(): string | null {
+    return storage.getItem('refreshToken');
   }
 
   private setToken(token: string | null): void {
@@ -40,9 +48,59 @@ class ApiClient {
     }
   }
 
+  private setRefreshToken(token: string | null): void {
+    if (token) {
+      storage.setItem('refreshToken', token);
+    } else {
+      storage.removeItem('refreshToken');
+    }
+  }
+
+  private async tryRefreshToken(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      this.setToken(data.token);
+      if (data.refreshToken) this.setRefreshToken(data.refreshToken);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   private async request<T>(
     path: string,
     options: RequestInit = {}
+  ): Promise<T> {
+    const method = options.method || 'GET';
+
+    // Deduplicate identical GET requests in flight
+    if (method === 'GET') {
+      const key = path;
+      const existing = this.inflight.get(key);
+      if (existing) return existing as Promise<T>;
+
+      const promise = this.doRequest<T>(path, options).finally(() => {
+        this.inflight.delete(key);
+      });
+      this.inflight.set(key, promise);
+      return promise;
+    }
+
+    return this.doRequest<T>(path, options);
+  }
+
+  private async doRequest<T>(
+    path: string,
+    options: RequestInit = {},
+    attempt = 0
   ): Promise<T> {
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -54,19 +112,39 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch (err) {
+      // Network error — retry with exponential backoff
+      if (attempt < this.MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, this.RETRY_BASE_MS * Math.pow(2, attempt)));
+        return this.doRequest<T>(path, options, attempt + 1);
+      }
+      throw err;
+    }
 
     if (response.status === 401) {
-      this.setToken(null);
-      // 避免在登录/注册页触发循环刷新
-      const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
-      if (!isAuthPage) {
-        window.location.href = '/login';
+      // Try refresh token before giving up
+      if (attempt === 0) {
+        const refreshed = await this.tryRefreshToken();
+        if (refreshed) {
+          return this.doRequest<T>(path, options, attempt + 1);
+        }
       }
+      this.setToken(null);
+      this.setRefreshToken(null);
+      window.location.href = '/login';
       throw new Error('Unauthorized');
+    }
+
+    // Retry on 5xx server errors
+    if (response.status >= 500 && attempt < this.MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, this.RETRY_BASE_MS * Math.pow(2, attempt)));
+      return this.doRequest<T>(path, options, attempt + 1);
     }
 
     if (!response.ok) {
@@ -85,8 +163,13 @@ class ApiClient {
     this.setToken(token);
   }
 
+  setAuthRefreshToken(token: string): void {
+    this.setRefreshToken(token);
+  }
+
   clearAuthToken(): void {
     this.setToken(null);
+    this.setRefreshToken(null);
   }
 
   isAuthenticated(): boolean {
@@ -95,13 +178,13 @@ class ApiClient {
 
   auth = {
     register: (data: { email: string; password: string; name?: string }) =>
-      this.request<{ token: string; user: User }>('/auth/register', {
+      this.request<{ token: string; refreshToken: string; user: User }>('/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
 
     login: (data: { email: string; password: string }) =>
-      this.request<{ token: string; user: User }>('/auth/login', {
+      this.request<{ token: string; refreshToken: string; user: User }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -178,11 +261,18 @@ class ApiClient {
   };
 
   traces = {
-    list: (projectId: string, params?: { sessionId?: string; parentTraceId?: string; evalStatus?: string; limit?: number; offset?: number }) => {
+    list: (projectId: string, params?: { sessionId?: string; parentTraceId?: string; evalStatus?: string; traceType?: string; status?: string; name?: string; startDate?: string; endDate?: string; latencyMin?: number; latencyMax?: number; limit?: number; offset?: number }) => {
       const query = new URLSearchParams({ projectId });
       if (params?.sessionId) query.set('sessionId', params.sessionId);
       if (params?.parentTraceId !== undefined) query.set('parentTraceId', params.parentTraceId);
       if (params?.evalStatus) query.set('evalStatus', params.evalStatus);
+      if (params?.traceType) query.set('traceType', params.traceType);
+      if (params?.status) query.set('status', params.status);
+      if (params?.name) query.set('name', params.name);
+      if (params?.startDate) query.set('startDate', params.startDate);
+      if (params?.endDate) query.set('endDate', params.endDate);
+      if (params?.latencyMin !== undefined) query.set('latencyMin', String(params.latencyMin));
+      if (params?.latencyMax !== undefined) query.set('latencyMax', String(params.latencyMax));
       if (params?.limit) query.set('limit', String(params.limit));
       if (params?.offset) query.set('offset', String(params.offset));
       return this.request<{ traces: Trace[] }>(`/traces?${query.toString()}`);
@@ -253,8 +343,8 @@ class ApiClient {
     },
     observation: (projectId: string) =>
       this.request<ObservationStats>(`/stats/observation?project_id=${projectId}`),
-    trend: (projectId: string, days?: number) =>
-      this.request<{ trend: TrendPoint[] }>(`/stats/trend?project_id=${projectId}${days ? `&days=${days}` : ''}`),
+    trend: (projectId: string, days: number = 7) =>
+      this.request<{ trend: TrendPoint[] }>(`/stats/trend?project_id=${projectId}&days=${days}`),
   };
 
   alerts = {
@@ -396,9 +486,9 @@ class ApiClient {
     evaluators: {
       list: (projectId: string) =>
         this.request<Evaluator[]>(`/evaluation/evaluators?project_id=${projectId}`),
-      create: (data: { project_id: string; name: string; description?: string; type: string; config?: Record<string, unknown>; model_config_id?: string }) =>
+      create: (data: { project_id: string; name: string; description?: string; type: string; config?: Record<string, unknown> }) =>
         this.request<Evaluator>('/evaluation/evaluators', { method: 'POST', body: JSON.stringify(data) }),
-      update: (id: string, data: { name?: string; description?: string; type?: string; config?: Record<string, unknown>; model_config_id?: string }) =>
+      update: (id: string, data: { name?: string; description?: string; type?: string; config?: Record<string, unknown> }) =>
         this.request<Evaluator>(`/evaluation/evaluators/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
       delete: (id: string) =>
         this.request<void>(`/evaluation/evaluators/${id}`, { method: 'DELETE' }),
@@ -455,8 +545,6 @@ class ApiClient {
       this.request<Prompt>(`/prompts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       this.request<void>(`/prompts/${id}`, { method: 'DELETE' }),
-    traces: (promptId: string) =>
-      this.request<{ traces: Trace[] }>(`/prompts/${promptId}/traces`),
     versions: {
       list: (promptId: string) =>
         this.request<PromptVersion[]>(`/prompts/${promptId}/versions`),
@@ -467,10 +555,6 @@ class ApiClient {
       this.request<Prompt>(`/prompts/${promptId}/rollback/${versionId}`, { method: 'POST' }),
     createVersion: (promptId: string, data: { content?: string; config?: Record<string, unknown>; description?: string; auto_regression?: boolean; regression_dataset_id?: string }) =>
       this.request<{ version: PromptVersion; prompt: Prompt | null; regression_experiment: EvaluationExperiment | null }>(`/prompts/${promptId}/versions`, { method: 'POST', body: JSON.stringify(data) }),
-    optimize: (promptId: string, data: { experiment_id: string; model_config_id?: string }) =>
-      this.request<OptimizationSuggestion>(`/prompts/${promptId}/optimize`, { method: 'POST', body: JSON.stringify(data) }),
-    applyOptimization: (promptId: string, data: { optimized_prompt: string; description?: string }) =>
-      this.request<PromptVersion>(`/prompts/${promptId}/optimize/apply`, { method: 'POST', body: JSON.stringify(data) }),
   };
 
   playground = {
@@ -478,8 +562,6 @@ class ApiClient {
       this.request<PlaygroundRun>('/playground/run', { method: 'POST', body: JSON.stringify(data) }),
     runs: (projectId: string, promptId?: string) =>
       this.request<PlaygroundRun[]>(`/playground/runs?project_id=${projectId}${promptId ? `&prompt_id=${promptId}` : ''}`),
-    compare: (data: { project_id: string; prompt_id?: string; prompt_version_id?: string; input: string; model_config_ids: string[] }) =>
-      this.request<{ results: PlaygroundRun[]; summary: { totalModels: number; avgLatencyMs: number; fastestModel: string; slowestModel: string } }>('/playground/compare', { method: 'POST', body: JSON.stringify(data) }),
   };
 
   modelConfigs = {
@@ -487,12 +569,8 @@ class ApiClient {
       this.request<ModelConfig[]>(`/model-configs?project_id=${projectId}`),
     create: (data: { project_id: string; name: string; provider: string; model: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }) =>
       this.request<ModelConfig>('/model-configs', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { name?: string; provider?: string; model?: string; config?: Record<string, unknown>; api_key?: string; base_url?: string }) =>
-      this.request<ModelConfig>(`/model-configs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>
       this.request<void>(`/model-configs/${id}`, { method: 'DELETE' }),
-    test: (id: string) =>
-      this.request<{ success: boolean; latency_ms: number; response_preview?: string; error?: string }>(`/model-configs/${id}/test`, { method: 'POST', body: '{}' }),
   };
 
   feedbacks = {
@@ -537,7 +615,6 @@ export interface Evaluator {
   description: string | null;
   type: string;
   config: Record<string, unknown>;
-  model_config_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -738,8 +815,6 @@ export interface Trace {
   error?: string;
   latest_eval_score?: number | null;
   latest_eval_passed?: number | null;
-  prompt_id?: string | null;
-  prompt_version_id?: string | null;
   created_at: string;
 }
 
@@ -983,20 +1058,6 @@ export interface AlertHistory {
   };
   message: string;
   triggeredAt: string;
-}
-
-export interface OptimizationSuggestion {
-  original_prompt: string;
-  optimized_prompt: string;
-  changes: string[];
-  reasoning: string;
-  low_score_samples: Array<{
-    input: string;
-    output: string;
-    expected_output: string;
-    score: number;
-    reasoning?: string;
-  }>;
 }
 
 export const api = new ApiClient();

@@ -108,6 +108,12 @@ Desktop.ini
 .cache/
 .eslintcache
 
+# ========================
+# Deployment secrets
+# ========================
+ssl/
+backups/
+
 # 临时测试脚本备份
 backend/package.json.test-scripts
 

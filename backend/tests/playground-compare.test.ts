@@ -18,7 +18,7 @@ describe('Playground Compare API', () => {
       .post('/api/auth/register')
       .send({
         email: testEmail,
-        password: 'Test123456!',
+        password: 'Test12345678!',
         name: 'Compare Test User',
       });
 

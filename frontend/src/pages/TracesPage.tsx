@@ -1,7 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { RefreshButton } from '../components/RefreshButton';
+import { FilterBar } from '../components/FilterBar';
+import { EvalWizard } from '../components/evaluation/EvalWizard';
+import { useFilterParams, TraceFilters } from '../hooks/useFilterParams';
 import { useTranslation } from '../App';
 import { api, Trace, Dataset, TraceEvalResult, TraceTreeResponse } from '../api';
 import { useProjectStore } from '../stores/projectStore';
@@ -10,14 +13,11 @@ export function TracesPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { currentProject } = useProjectStore();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters, clearFilters] = useFilterParams();
   const [traces, setTraces] = useState<Trace[]>([]);
   const [selectedTrace, setSelectedTrace] = useState<Trace | null>(null);
   const [traceTree, setTraceTree] = useState<TraceTreeResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterType, setFilterType] = useState(searchParams.get('type') || '');
-  const [filterStatus, setFilterStatus] = useState(searchParams.get('status') || '');
-  const [filterEvalStatus, setFilterEvalStatus] = useState(searchParams.get('evalStatus') || '');
   const [selectedTraceIds, setSelectedTraceIds] = useState<Set<string>>(new Set());
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [showReflowModal, setShowReflowModal] = useState(false);
@@ -28,19 +28,16 @@ export function TracesPage() {
   const [evalForm, setEvalForm] = useState({ evaluator: 'manual', score: 0.8, passed: true, details: '' });
   const [evalLoading, setEvalLoading] = useState(false);
   const [evaluations, setEvaluations] = useState<TraceEvalResult[]>([]);
+  const [showEvalWizard, setShowEvalWizard] = useState(false);
 
   const loadTraces = useCallback(async () => {
     if (!currentProject?.id) return;
     setIsLoading(true);
     try {
-      const params: { parentTraceId?: string; traceType?: string; status?: string; evalStatus?: string; limit: number } = {
+      const { traces } = await api.traces.list(currentProject.id, {
+        ...filters,
         limit: 100,
-      };
-      if (filterType) params.traceType = filterType;
-      if (filterStatus) params.status = filterStatus;
-      if (filterEvalStatus) params.evalStatus = filterEvalStatus;
-      const { traces } = await api.traces.list(currentProject.id, params);
-      // Only show root traces by default (no parent)
+      });
       const rootTraces = traces.filter(t => !t.parent_trace_id);
       setTraces(rootTraces);
     } catch (err) {
@@ -48,7 +45,7 @@ export function TracesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentProject?.id, filterType, filterStatus, filterEvalStatus]);
+  }, [currentProject?.id, filters]);
 
   const loadDatasets = useCallback(async () => {
     if (!currentProject?.id) return;
@@ -195,75 +192,41 @@ export function TracesPage() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{t.traceNav}</h1>
-            <p className="text-sm text-gray-500 mt-1">{t.traceList}</p>
+            <h1 className="text-2xl font-bold text-gray-900">{t.traceCenter}</h1>
+            <p className="text-sm text-gray-500 mt-1">{t.traces}</p>
           </div>
           <RefreshButton onRefresh={handleRefresh} />
         </div>
 
-        <div className="flex gap-4 mb-4">
-          <select
-            value={filterType}
-            onChange={e => {
-              setFilterType(e.target.value);
-              const sp = new URLSearchParams(searchParams);
-              if (e.target.value) sp.set('type', e.target.value);
-              else sp.delete('type');
-              setSearchParams(sp);
-            }}
-            className="px-3 py-2 border rounded-md text-sm"
-          >
-            <option value="">{t.allTypes}</option>
-            {traceTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
-          <select
-            value={filterStatus}
-            onChange={e => {
-              setFilterStatus(e.target.value);
-              const sp = new URLSearchParams(searchParams);
-              if (e.target.value) sp.set('status', e.target.value);
-              else sp.delete('status');
-              setSearchParams(sp);
-            }}
-            className="px-3 py-2 border rounded-md text-sm"
-          >
-            <option value="">{t.allStatus}</option>
-            <option value="success">{t.success}</option>
-            <option value="error">{t.failed}</option>
-          </select>
-          <select
-            value={filterEvalStatus}
-            onChange={e => {
-              setFilterEvalStatus(e.target.value);
-              const sp = new URLSearchParams(searchParams);
-              if (e.target.value) sp.set('evalStatus', e.target.value);
-              else sp.delete('evalStatus');
-              setSearchParams(sp);
-            }}
-            className="px-3 py-2 border rounded-md text-sm"
-          >
-            <option value="">{t.allEvalStatus}</option>
-            <option value="needs_attention">⚠️ {t.needsAttention}</option>
-            <option value="passed">✅ {t.passedLabel}</option>
-            <option value="unevaluated">❓ {t.unevaluated}</option>
-          </select>
-        </div>
+        <FilterBar
+          filters={filters}
+          onFilterChange={setFilters}
+          onClear={clearFilters}
+          traceTypes={traceTypes}
+          t={t as any}
+        />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="p-4 border-b">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">{t.traceList}</h3>
                   {selectedTraceIds.size > 0 && (
-                    <button
-                      onClick={openBulkReflow}
-                      className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
-                    >
-                      + Dataset ({selectedTraceIds.size})
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowEvalWizard(true)}
+                        className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                      >
+                        快速评测 ({selectedTraceIds.size})
+                      </button>
+                      <button
+                        onClick={openBulkReflow}
+                        className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                      >
+                        + Dataset ({selectedTraceIds.size})
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
@@ -547,6 +510,15 @@ export function TracesPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Eval Wizard */}
+      {showEvalWizard && currentProject && (
+        <EvalWizard
+          projectId={currentProject.id}
+          traceIds={Array.from(selectedTraceIds)}
+          onClose={() => setShowEvalWizard(false)}
+        />
       )}
 
       {/* Reflow Modal */}

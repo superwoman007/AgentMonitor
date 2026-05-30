@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { StatsCards } from '../components/StatsCards';
 import { TrendChart } from '../components/TrendChart';
@@ -13,6 +14,7 @@ import { useTranslation } from '../App';
 import { api, Trace, TrendPoint } from '../api';
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { token, user, fetchUser } = useAuthStore();
   const { projects, currentProject, fetchProjects, ensureDefaultProject } = useProjectStore();
   const { traces, selectedTrace, stats, fetchTraces, fetchStats, selectTrace, addTrace } = useTraceStore();
@@ -67,12 +69,15 @@ export function DashboardPage() {
   }, [traces, wsStatus]);
 
   useEffect(() => {
-    if (!currentProject) return;
+    if (!currentProject || !token) {
+      setWsStatus('disconnected');
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const isDev = !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
     const wsHost = isDev ? `${window.location.hostname}:3000` : window.location.host;
-    const wsUrl = `${protocol}//${wsHost}/ws?projectId=${currentProject.id}`;
+    const wsUrl = `${protocol}//${wsHost}/ws?projectId=${currentProject.id}&token=${encodeURIComponent(token)}`;
     let alive = true;
     let retryTimer: number | undefined;
 
@@ -144,7 +149,7 @@ export function DashboardPage() {
         wsRef.current = null;
       }
     };
-  }, [currentProject?.id, addTrace]);
+  }, [currentProject?.id, token, addTrace]);
 
   const handleRefresh = useCallback(async () => {
     if (currentProject) {
@@ -171,7 +176,10 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <StatsCards stats={stats} />
+      <StatsCards stats={stats} onCardClick={(filter) => {
+        const params = new URLSearchParams(filter);
+        navigate(`/traces?${params.toString()}`);
+      }} />
 
       <TrendChart data={trendData} />
 

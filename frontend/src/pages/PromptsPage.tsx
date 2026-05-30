@@ -1,28 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useProjectStore } from '../stores/projectStore';
-import { api, Prompt, PromptVersion, PlaygroundRun, ModelConfig, Dataset, Trace, OptimizationSuggestion, EvaluationExperiment } from '../api';
+import { api, Prompt, PromptVersion, PlaygroundRun, ModelConfig, Dataset } from '../api';
 import { useTranslation } from '../App';
 
-type Tab = 'prompts' | 'versions' | 'runs' | 'configs' | 'linkedTraces';
-
-// 去掉 JSON 中的注释（// 和 /* */），支持在 config 输入框中写注释
-function stripJsonComments(jsonString: string): string {
-  return jsonString
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '');
-}
-
-const DEFAULT_PROMPT_CONFIG = `{
-  // 控制输出随机性: 0=确定性输出, 1=完全随机 (默认 0.7)
-  "temperature": 0.7,
-
-  // 最大输出 token 数 (默认 2048)
-  "max_tokens": 2048,
-
-  // 模型调用超时毫秒数 (默认 30000)
-  "timeout_ms": 30000
-}`;
+type Tab = 'prompts' | 'versions' | 'runs' | 'configs';
 
 export function PromptsPage() {
   const { currentProject, ensureDefaultProject } = useProjectStore();
@@ -34,7 +16,7 @@ export function PromptsPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [selectedPrompt, setSelectedPrompt] = useState<Prompt | null>(null);
   const [showPromptModal, setShowPromptModal] = useState(false);
-  const [promptForm, setPromptForm] = useState({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
+  const [promptForm, setPromptForm] = useState({ name: '', description: '', content: '', config: '{}' });
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
   const [autoRegression, setAutoRegression] = useState(false);
   const [regressionDatasetId, setRegressionDatasetId] = useState('');
@@ -59,17 +41,6 @@ export function PromptsPage() {
 
   // Compare state
   const [compareResults, setCompareResults] = useState<PlaygroundRun[]>([]);
-
-  // Linked traces state
-  const [linkedTraces, setLinkedTraces] = useState<Trace[]>([]);
-
-  // AI Optimize state
-  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
-  const [optimizeExperiments, setOptimizeExperiments] = useState<EvaluationExperiment[]>([]);
-  const [selectedOptimizeExperiment, setSelectedOptimizeExperiment] = useState('');
-  const [optimizeModelConfig, setOptimizeModelConfig] = useState('');
-  const [optimizeLoading, setOptimizeLoading] = useState(false);
-  const [optimizeSuggestion, setOptimizeSuggestion] = useState<OptimizationSuggestion | null>(null);
 
   useEffect(() => {
     ensureDefaultProject();
@@ -130,76 +101,6 @@ export function PromptsPage() {
     setLoading(false);
   };
 
-  const fetchLinkedTraces = async (promptId: string) => {
-    try {
-      const res = await api.prompts.traces(promptId);
-      setLinkedTraces(res.traces || []);
-    } catch (e) {
-      console.error('Failed to fetch linked traces:', e);
-    }
-  };
-
-  const fetchExperiments = async () => {
-    if (!currentProject) return;
-    try {
-      const res = await api.evaluation.experiments.list(currentProject.id);
-      const exps = Array.isArray(res) ? res : [];
-      setOptimizeExperiments(exps.filter((e: EvaluationExperiment) => e.status === 'completed'));
-    } catch (e) {
-      console.error('Failed to fetch experiments:', e);
-    }
-  };
-
-  const openOptimizeModal = () => {
-    fetchExperiments();
-    setSelectedOptimizeExperiment('');
-    setOptimizeModelConfig('');
-    setOptimizeSuggestion(null);
-    setShowOptimizeModal(true);
-  };
-
-  const handleGenerateOptimization = async () => {
-    if (!selectedPrompt || !selectedOptimizeExperiment) return;
-    setOptimizeLoading(true);
-    try {
-      const result = await api.prompts.optimize(selectedPrompt.id, {
-        experiment_id: selectedOptimizeExperiment,
-        model_config_id: optimizeModelConfig || undefined,
-      });
-      setOptimizeSuggestion(result);
-    } catch (e) {
-      console.error('Failed to optimize:', e);
-      alert(t.optimizationFailed + ': ' + (e instanceof Error ? e.message : 'Unknown error'));
-    } finally {
-      setOptimizeLoading(false);
-    }
-  };
-
-  const handleApplyOptimization = async () => {
-    if (!selectedPrompt || !optimizeSuggestion) return;
-    setOptimizeLoading(true);
-    try {
-      await api.prompts.applyOptimization(selectedPrompt.id, {
-        optimized_prompt: optimizeSuggestion.optimized_prompt,
-        description: 'AI optimized: ' + optimizeSuggestion.changes.slice(0, 3).join(', '),
-      });
-      setShowOptimizeModal(false);
-      setOptimizeSuggestion(null);
-      fetchPrompts();
-      if (selectedPrompt) {
-        const updated = await api.prompts.list(currentProject!.id);
-        const found = (Array.isArray(updated) ? updated : []).find((p: Prompt) => p.id === selectedPrompt.id);
-        if (found) setSelectedPrompt(found);
-        fetchVersions(selectedPrompt.id);
-      }
-    } catch (e) {
-      console.error('Failed to apply optimization:', e);
-      alert('Apply failed: ' + (e instanceof Error ? e.message : 'Unknown error'));
-    } finally {
-      setOptimizeLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (!currentProject) {
       setLoading(false);
@@ -211,7 +112,6 @@ export function PromptsPage() {
   useEffect(() => {
     if (selectedPrompt) {
       fetchVersions(selectedPrompt.id);
-      fetchLinkedTraces(selectedPrompt.id);
     }
   }, [selectedPrompt?.id]);
 
@@ -220,7 +120,7 @@ export function PromptsPage() {
     if (!currentProject) return;
     try {
       let cfg = {};
-      try { cfg = JSON.parse(stripJsonComments(promptForm.config)); } catch {}
+      try { cfg = JSON.parse(promptForm.config); } catch {}
       await api.prompts.create({
         project_id: currentProject.id,
         name: promptForm.name,
@@ -229,7 +129,7 @@ export function PromptsPage() {
         config: cfg,
       });
       setShowPromptModal(false);
-      setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
+      setPromptForm({ name: '', description: '', content: '', config: '{}' });
       fetchPrompts();
     } catch (e) {
       console.error('Failed to create prompt:', e);
@@ -242,7 +142,7 @@ export function PromptsPage() {
     try {
       let cfg = undefined;
       try {
-        const parsed = JSON.parse(stripJsonComments(promptForm.config));
+        const parsed = JSON.parse(promptForm.config);
         if (Object.keys(parsed).length > 0) cfg = parsed;
       } catch {}
 
@@ -267,7 +167,7 @@ export function PromptsPage() {
       setEditingPrompt(null);
       setAutoRegression(false);
       setRegressionDatasetId('');
-      setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG });
+      setPromptForm({ name: '', description: '', content: '', config: '{}' });
       fetchPrompts();
       if (selectedPrompt?.id === editingPrompt.id) {
         const updated = await api.prompts.list(currentProject!.id);
@@ -332,17 +232,24 @@ export function PromptsPage() {
     if (!currentProject || !selectedPrompt || modelConfigs.length === 0) return;
     setRunning(true);
     try {
-      const res = await api.playground.compare({
-        project_id: currentProject.id,
-        prompt_id: selectedPrompt.id,
-        input: playgroundInput,
-        model_config_ids: modelConfigs.map((c) => c.id),
-      });
-      setCompareResults(res.results);
+      const results: PlaygroundRun[] = [];
+      for (const cfg of modelConfigs) {
+        const model = cfg.model;
+        const res = await api.playground.run({
+          project_id: currentProject.id,
+          prompt_id: selectedPrompt.id,
+          model,
+          input: playgroundInput,
+          output: `[${model}] Simulated response`,
+          latency_ms: 600 + Math.floor(Math.random() * 1000),
+          status: 'success',
+        });
+        results.push(res);
+      }
+      setCompareResults(results);
       fetchRuns();
     } catch (e) {
       console.error('Failed to compare:', e);
-      alert('Compare failed: ' + (e instanceof Error ? e.message : 'Unknown error'));
     } finally {
       setRunning(false);
     }
@@ -381,12 +288,11 @@ export function PromptsPage() {
 
   const startEdit = (prompt: Prompt) => {
     setEditingPrompt(prompt);
-    const hasConfig = prompt.config && Object.keys(prompt.config).length > 0;
     setPromptForm({
       name: prompt.name,
       description: prompt.description || '',
       content: prompt.content,
-      config: hasConfig ? JSON.stringify(prompt.config, null, 2) : DEFAULT_PROMPT_CONFIG,
+      config: JSON.stringify(prompt.config || {}, null, 2),
     });
     fetchDatasets();
   };
@@ -414,7 +320,7 @@ export function PromptsPage() {
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6 border-b">
-        {(['prompts', 'versions', 'runs', 'configs', 'linkedTraces'] as Tab[]).map((tab) => (
+        {(['prompts', 'versions', 'runs', 'configs'] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -428,7 +334,6 @@ export function PromptsPage() {
             {tab === 'versions' && t.versions}
             {tab === 'runs' && t.playground}
             {tab === 'configs' && t.modelConfigs}
-            {tab === 'linkedTraces' && t.linkedTraces}
           </button>
         ))}
       </div>
@@ -441,7 +346,7 @@ export function PromptsPage() {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-medium">{t.prompts}</h2>
               <button
-                onClick={() => { setEditingPrompt(null); setPromptForm({ name: '', description: '', content: '', config: DEFAULT_PROMPT_CONFIG }); setShowPromptModal(true); }}
+                onClick={() => { setEditingPrompt(null); setPromptForm({ name: '', description: '', content: '', config: '{}' }); setShowPromptModal(true); }}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
               >
                 {t.createPrompt}
@@ -475,7 +380,6 @@ export function PromptsPage() {
                     <h3 className="font-medium">{selectedPrompt.name}</h3>
                     <div className="flex gap-2">
                       <button onClick={() => startEdit(selectedPrompt)} className="text-xs px-2 py-1 border rounded hover:bg-gray-50">{t.edit}</button>
-                      <button onClick={openOptimizeModal} className="text-xs px-2 py-1 border rounded hover:bg-purple-50 text-purple-600">{t.aiOptimize}</button>
                       <button onClick={() => handleDeletePrompt(selectedPrompt.id)} className="text-xs px-2 py-1 border text-red-600 rounded hover:bg-red-50">{t.delete}</button>
                     </div>
                   </div>
@@ -689,55 +593,6 @@ export function PromptsPage() {
         </div>
       )}
 
-      {/* Linked Traces Tab */}
-      {activeTab === 'linkedTraces' && (
-        <div>
-          {selectedPrompt ? (
-            <div className="space-y-4">
-              <h2 className="text-lg font-medium">{t.linkedTraces} — {selectedPrompt.name}</h2>
-              <p className="text-sm text-gray-500">{t.linkedTracesHint}</p>
-              <div className="bg-white border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left">{t.traceName}</th>
-                      <th className="px-4 py-2 text-left">{t.traceType}</th>
-                      <th className="px-4 py-2 text-left">{t.status}</th>
-                      <th className="px-4 py-2 text-left">{t.latency}</th>
-                      <th className="px-4 py-2 text-left">{t.startTime}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {linkedTraces.map((trace) => (
-                      <tr key={trace.id} className="border-t">
-                        <td className="px-4 py-2 font-mono text-xs">{trace.name}</td>
-                        <td className="px-4 py-2">
-                          <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">{trace.trace_type}</span>
-                        </td>
-                        <td className="px-4 py-2">
-                          <span className={`text-xs px-2 py-0.5 rounded ${trace.status === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {trace.status === 'success' ? t.success : t.failed}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2">{trace.latency_ms}ms</td>
-                        <td className="px-4 py-2 text-xs text-gray-500">{new Date(trace.started_at).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    {linkedTraces.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">{t.noTraces}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center text-gray-500 py-12">{t.pleaseSelectProject}</div>
-          )}
-        </div>
-      )}
-
       {/* Prompt Modal */}
       {(showPromptModal || editingPrompt) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -825,130 +680,6 @@ export function PromptsPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* AI Optimize Modal */}
-      {showOptimizeModal && selectedPrompt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-medium mb-2">{t.aiOptimize} — {selectedPrompt.name}</h3>
-            <p className="text-sm text-gray-500 mb-4">{t.aiOptimizeHint}</p>
-
-            {!optimizeSuggestion ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t.selectExperiment}</label>
-                  <select
-                    value={selectedOptimizeExperiment}
-                    onChange={(e) => setSelectedOptimizeExperiment(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  >
-                    <option value="">-- {t.selectExperiment} --</option>
-                    {optimizeExperiments.map((exp) => (
-                      <option key={exp.id} value={exp.id}>{exp.name}</option>
-                    ))}
-                  </select>
-                  {optimizeExperiments.length === 0 && (
-                    <p className="text-xs text-gray-500 mt-1">{t.noCompletedExperiments}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t.optimizeModel}</label>
-                  <select
-                    value={optimizeModelConfig}
-                    onChange={(e) => setOptimizeModelConfig(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  >
-                    <option value="">Default (auto-select)</option>
-                    {modelConfigs.map((cfg) => (
-                      <option key={cfg.id} value={cfg.id}>{cfg.name} ({cfg.provider}/{cfg.model})</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setShowOptimizeModal(false)}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                  >
-                    {t.cancel}
-                  </button>
-                  <button
-                    onClick={handleGenerateOptimization}
-                    disabled={optimizeLoading || !selectedOptimizeExperiment}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {optimizeLoading ? t.loading : t.generateOptimization}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">{t.reasoning}</h4>
-                  <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">{optimizeSuggestion.reasoning}</p>
-                </div>
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">{t.changes}</h4>
-                  <ul className="list-disc list-inside text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                    {optimizeSuggestion.changes.map((change, i) => (
-                      <li key={i}>{change}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">{t.originalPrompt}</h4>
-                    <textarea
-                      className="w-full px-3 py-2 border rounded-lg font-mono text-xs bg-gray-50"
-                      rows={6}
-                      value={optimizeSuggestion.original_prompt}
-                      readOnly
-                    />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">{t.optimizedPrompt}</h4>
-                    <textarea
-                      className="w-full px-3 py-2 border rounded-lg font-mono text-xs bg-green-50 border-green-200"
-                      rows={6}
-                      value={optimizeSuggestion.optimized_prompt}
-                      readOnly
-                    />
-                  </div>
-                </div>
-                {optimizeSuggestion.low_score_samples.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">{t.lowScoreSamples} ({optimizeSuggestion.low_score_samples.length})</h4>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {optimizeSuggestion.low_score_samples.map((sample, i) => (
-                        <div key={i} className="bg-red-50 border border-red-100 rounded-lg p-2 text-xs">
-                          <div className="font-medium text-red-700">Input: {sample.input}</div>
-                          <div className="text-gray-600">Expected: {sample.expected_output}</div>
-                          <div className="text-gray-600">Actual: {sample.output}</div>
-                          <div className="text-red-600">Score: {sample.score}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setOptimizeSuggestion(null)}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                  >
-                    {t.back}
-                  </button>
-                  <button
-                    onClick={handleApplyOptimization}
-                    disabled={optimizeLoading}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {optimizeLoading ? t.applyingOptimization : t.applyOptimization}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

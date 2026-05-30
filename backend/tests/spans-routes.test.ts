@@ -15,7 +15,7 @@ describe('Spans API', () => {
     const testEmail = `test-spans-${Date.now()}@example.com`;
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Spans Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Spans Test User' });
 
     authToken = registerResponse.body.token;
 

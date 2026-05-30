@@ -29,7 +29,7 @@ describe('Playground API (PM-02)', () => {
     const testEmail = `test-playground-${Date.now()}@example.com`;
     const registerResponse = await request(app.server)
       .post('/api/auth/register')
-      .send({ email: testEmail, password: 'Test123456!', name: 'Playground Test User' });
+      .send({ email: testEmail, password: 'Test12345678!', name: 'Playground Test User' });
     authToken = registerResponse.body.token;
 
     const projectResponse = await request(app.server)

@@ -11,21 +11,23 @@ function getPoolConfig(): pg.PoolConfig {
   if (config.database.url) {
     return {
       connectionString: config.database.url,
-      max: 20,
-      idleTimeoutMillis: 30000,
+      max: config.database.poolMax,
+      idleTimeoutMillis: config.database.poolIdleTimeout,
       connectionTimeoutMillis: 5000,
+      ssl: config.database.ssl ? { rejectUnauthorized: false } : undefined,
     };
   }
-  
+
   return {
     host: config.database.host,
     port: config.database.port,
     user: config.database.user,
     password: config.database.password,
     database: config.database.database,
-    max: 20,
-    idleTimeoutMillis: 30000,
+    max: config.database.poolMax,
+    idleTimeoutMillis: config.database.poolIdleTimeout,
     connectionTimeoutMillis: 5000,
+    ssl: config.database.ssl ? { rejectUnauthorized: false } : undefined,
   };
 }
 

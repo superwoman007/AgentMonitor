@@ -19,7 +19,7 @@ describe('Trace Dataset Reflow API', () => {
       .post('/api/auth/register')
       .send({
         email: testEmail,
-        password: 'Test123456!',
+        password: 'Test12345678!',
         name: 'Reflow Test User'
       });
 
@@ -193,7 +193,7 @@ describe('Trace Dataset Reflow API', () => {
       const otherEmail = `other-${Date.now()}@example.com`;
       const otherRegister = await request(app.server)
         .post('/api/auth/register')
-        .send({ email: otherEmail, password: 'Test123456!', name: 'Other' });
+        .send({ email: otherEmail, password: 'Test12345678!', name: 'Other' });
       const otherToken = otherRegister.body.token;
 
       const otherProject = await request(app.server)

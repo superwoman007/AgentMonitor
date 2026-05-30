@@ -1,7 +1,15 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { SpanTreeNode } from '../../api';
 import { SpanBar } from './SpanBar';
+import { GanttTooltip } from './GanttTooltip';
+import { GanttMinimap } from './GanttMinimap';
+import { findCriticalPath } from '../../utils/criticalPath';
 import { useTranslation } from '../../App';
+
+export interface ZoomState {
+  start: number; // 0-100 percent
+  end: number;   // 0-100 percent
+}
 
 interface GanttChartProps {
   spans: SpanTreeNode[];
@@ -58,10 +66,15 @@ export function GanttChart({
   sortByLatency,
 }: GanttChartProps) {
   const { t } = useTranslation();
+  const [zoom, setZoom] = useState<ZoomState>({ start: 0, end: 100 });
+  const [tooltip, setTooltip] = useState<{ span: SpanTreeNode; x: number; y: number } | null>(null);
+
   const displaySpans = useMemo(() => {
     if (!sortByLatency) return spans;
     return sortSpansByLatency(spans);
   }, [spans, sortByLatency]);
+
+  const criticalPathIds = useMemo(() => new Set(findCriticalPath(spans)), [spans]);
 
   /**
    * 计算整个 trace 的时间范围
@@ -86,26 +99,57 @@ export function GanttChart({
   }, [spans]);
 
   /**
-   * 生成时间轴刻度
+   * 生成时间轴刻度（基于 zoom 窗口）
    */
   const ticks = useMemo(() => {
     const tickCount = 5;
     const arr: { label: string; percent: number }[] = [];
+    const zoomStartMs = (zoom.start / 100) * totalDuration;
+    const zoomEndMs = (zoom.end / 100) * totalDuration;
+    const zoomDuration = zoomEndMs - zoomStartMs;
     for (let i = 0; i <= tickCount; i++) {
-      const offset = (totalDuration / tickCount) * i;
+      const offset = zoomStartMs + (zoomDuration / tickCount) * i;
       arr.push({
         label: formatDuration(offset),
         percent: (i / tickCount) * 100,
       });
     }
     return arr;
-  }, [totalDuration]);
+  }, [totalDuration, zoom]);
 
   const handleSelectSpan = useCallback(
     (spanId: string) => {
       onSelectSpan(spanId);
     },
     [onSelectSpan]
+  );
+
+  const handleZoomToSpan = useCallback(
+    (span: SpanTreeNode) => {
+      const startMs = new Date(span.startedAt).getTime();
+      const endMs = span.endedAt
+        ? new Date(span.endedAt).getTime()
+        : startMs + (span.latencyMs ?? 0);
+      const spanStartPct = ((startMs - traceStart) / totalDuration) * 100;
+      const spanEndPct = ((endMs - traceStart) / totalDuration) * 100;
+      const padding = (spanEndPct - spanStartPct) * 0.2;
+      setZoom({
+        start: Math.max(0, spanStartPct - padding),
+        end: Math.min(100, spanEndPct + padding),
+      });
+    },
+    [traceStart, totalDuration]
+  );
+
+  const handleSpanHover = useCallback(
+    (span: SpanTreeNode | null, e?: React.MouseEvent) => {
+      if (span && e) {
+        setTooltip({ span, x: e.clientX, y: e.clientY });
+      } else {
+        setTooltip(null);
+      }
+    },
+    []
   );
 
   if (spans.length === 0) {
@@ -120,6 +164,9 @@ export function GanttChart({
   return (
     <div className="bg-white rounded-lg shadow-sm border p-4">
       <h3 className="font-semibold text-gray-900 mb-4">{t.ganttChart}</h3>
+
+      {/* Minimap (only visible when zoomed) */}
+      <GanttMinimap zoom={zoom} onZoomChange={setZoom} />
 
       {/* 表头 */}
       <div className="flex items-center gap-2 mb-1">
@@ -165,10 +212,17 @@ export function GanttChart({
             traceStart={traceStart}
             selectedSpanId={selectedSpanId}
             onSelectSpan={handleSelectSpan}
+            onDoubleClick={handleZoomToSpan}
+            onHover={handleSpanHover}
             sortByLatency={sortByLatency}
+            zoom={zoom}
+            criticalPathIds={criticalPathIds}
           />
         ))}
       </div>
+
+      {/* Tooltip */}
+      {tooltip && <GanttTooltip span={tooltip.span} x={tooltip.x} y={tooltip.y} />}
     </div>
   );
 }

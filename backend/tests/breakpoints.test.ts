@@ -18,7 +18,7 @@ describe('Breakpoints API', () => {
       .send({
         name: 'Breakpoint Test User',
         email: `bp-test-${Date.now()}@example.com`,
-        password: 'Test123456!',
+        password: 'Test12345678!',
       });
 
     authToken = registerRes.body.token;
