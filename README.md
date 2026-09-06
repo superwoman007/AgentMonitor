@@ -1,335 +1,138 @@
-
 # AgentMonitor 🚀
 
-**AI Agent 质量监控与调试平台 - 让你的 AI 应用调用一目了然！**
+**AI Agent 可观测、可评测、可调试的一体化平台。**
 
-[![GitHub stars](https://img.shields.io/github/stars/your-username/agent-monitor?style=social)](https://github.com/your-username/agent-monitor/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/your-username/agent-monitor?style=social)](https://github.com/your-username/agent-monitor/network/members)
-[![GitHub license](https://img.shields.io/github/license/your-username/agent-monitor)](https://github.com/your-username/agent-monitor/blob/main/LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/your-username/agent-monitor)](https://github.com/your-username/agent-monitor/issues)
+AgentMonitor 为 AI Agent 与 LLM 应用提供实时监控、链路追踪、断点调试、质量评测、成本分析与告警能力，让 Agent 的每一次调用都清晰可见、问题可定位、效果可衡量。
 
----
-
-## ✨ 为什么用 AgentMonitor？
-
-你是不是也在开发 AI 应用，但：
-
-- 😫 不知道用户调用了多少次 AI？
-- 😰 搞不清每次调用花了多少钱、多少 Token？
-- 🤯 出错了找不到原因？
-- 😓 想优化提示词但没数据支撑？
-- 🐛 想调试 Agent 执行流程但无从下手？
-
-**AgentMonitor 来救你了！** 轻量级、开箱即用的 AI 调用监控面板，5分钟接入，实时监控所有 AI 调用！
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-green)](./backend/package.json)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](./backend/tsconfig.json)
 
 ---
 
-## 🎯 核心功能
+## 🌐 在线体验
 
-### 📊 实时监控面板
-- 总请求数、成功数/失败数、成功率
-- 平均延迟、总 Token 消耗
-- 实时 WebSocket 推送，无需刷新
+无需安装，立即体验完整功能：
 
-### 🐛 断点调试（特色功能）⭐
-- **断点设置** - 在任意步骤设置断点
-- **执行暂停** - Agent 执行到断点自动暂停
-- **状态检查** - 查看当前上下文、变量
-- **单步执行** - 一步步调试 Agent 流程
-- **继续/终止** - 控制执行流程
-
-### 📈 质量分析
-- 质量评分（0-100分）
-- 速度评分：延迟 <500ms=100分, <2s=80分, <5s=50分
-- 成功评分：成功100/失败0
-- 质量趋势图表
-
-### 💰 成本分析
-- 成本总览（今日/本周/本月/总计）
-- 成本趋势折线图
-- 按模型分布饼图
-- 最贵调用 TOP 10
-- 成本优化建议
-
-### 🚨 告警系统
-- 延迟告警 - 响应超时自动告警
-- 错误率告警 - 失败率过高告警
-- 成本告警 - 每日花费超标告警
-- 自定义条件告警
-
-### 📝 其他功能
-- 调用记录列表与详情
-- 多项目管理
-- API Key 管理
-- 中英文切换
-- 快照功能
+> 🔗 **体验地址**：**[https://14.103.80.198](https://14.103.80.198)**
+>
+> 🔑 **演示账号**：`demo@agentmonitor.dev` ／ 密码：`Demo@View#2026`
+>
+> 演示账号内已预置真实的 Agent 调用、会话、工具调用与决策数据，可直接浏览仪表盘、追踪、评测等全部页面。
+>
+> ⚠️ 体验环境使用自签名证书，浏览器如提示"不安全/您的连接不是私密连接"，点击"高级 → 继续访问"即可；也可选择 [一键本地启动](#-快速开始)。
 
 ---
 
-## 📚 文档
+## 📸 产品截图
 
-- **[SDK 快速接入指南](./docs/SDK-QUICKSTART.md)** - 3 行代码接入，支持 TypeScript/Python/Go
-- **[部署指南](./docs/DEPLOYMENT.md)** - 本地开发、Docker、生产环境部署
-- **[API 文档](./docs/API.md)** - 完整 REST API 参考（待补充）
+### 实时监控仪表盘
+
+总请求数、成功率、平均延迟、Token 消耗一览无余，WebSocket 实时推送，内置 SDK 接入健康诊断。
+
+![实时监控仪表盘](./screenshots/dashboard.png)
+
+### 调用链路追踪
+
+自动采集 Agent / LLM / Tool 全链路调用，支持类型筛选、状态过滤、耗时区间与关键字检索，点击即可查看完整输入输出。
+
+![调用链路追踪](./screenshots/traces.png)
+
+### 会话回放
+
+按会话维度还原 Agent 与用户的完整交互过程，支持 Timeline / Chat / Unified 多种视图。
+
+![会话回放](./screenshots/sessions.png)
+
+### 评测中心
+
+数据集、评估器、实验、报告一站式管理，支持规则评分与 LLM Judge，一键回归、横向对比。
+
+![评测中心](./screenshots/evaluation.png)
+
+### 提示工程
+
+Prompt 版本管理、diff 对比、回滚，Playground 多模型并行对比调试。
+
+![提示工程](./screenshots/prompts.png)
+
+### 断点调试 ⭐
+
+在 Agent 执行链路任意节点设置断点，命中即暂停，支持单步执行、上下文变量检查与状态快照回放。
+
+![断点调试](./screenshots/debugging.png)
+
+### 决策监控
+
+追踪 Agent 的关键决策过程，记录决策类型、结论、置信度与规则依据，让"黑盒"决策可解释。
+
+![决策监控](./screenshots/decisions.png)
+
+### 质量 · 成本 · 告警
+
+| 质量分析 | 成本分析 |
+|:---:|:---:|
+| ![质量分析](./screenshots/quality.png) | ![成本分析](./screenshots/cost.png) |
+
+![告警中心](./screenshots/alerts.png)
+
+---
+
+## ✨ 核心特性
+
+- **📊 实时监控面板** —— 请求数、成功率、延迟、Token 实时统计，趋势图表 + WebSocket 推送。
+- **🔍 全链路追踪（Span/Trace）** —— 类 OpenTelemetry 模型，支持嵌套、并行、父子关联的调用树。
+- **🐛 断点调试（特色）** —— 断点设置、执行暂停、单步执行、变量检查、快照回放。
+- **🧪 评测中心** —— 数据集版本管理、5 种评估器、LLM Judge、实验报告与 Bad Case 回流。
+- **📝 提示工程** —— Prompt 版本/diff/回滚、Playground 多模型对比、改动自动回归。
+- **🧠 决策监控** —— 决策类型、置信度、规则依据的可解释追踪。
+- **💰 成本分析** —— 成本总览/趋势、按模型分布、最贵调用 TOP 榜与优化建议。
+- **🚨 智能告警** —— 延迟、错误率、成本阈值告警，支持自定义条件。
+- **🌍 多语言 SDK** —— TypeScript / Python / Go，3 行代码接入，框架无关、模型无关。
+- **🗄️ 轻量部署** —— SQLite 开箱即用，生产可切换 PostgreSQL，支持 Docker / Nginx。
 
 ---
 
 ## 🚀 快速开始
 
-### 方式一：Docker 启动（生产环境推荐）
+### 方式一：Docker 一键启动（推荐）
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/agent-monitor.git
-cd agent-monitor
+git clone https://github.com/superwoman007/AgentMonitor.git
+cd AgentMonitor
 
 # 启动所有服务
 docker-compose up -d
-
-# 访问面板
-# 前端：http://localhost:5173
-# 后端：http://localhost:3000
-```
-
-### 方式二：本地开发（SQLite 模式）
-
-默认使用 SQLite，无需安装数据库，开箱即用：
-
-```bash
-# 安装依赖
-cd backend && npm install
-cd ../frontend && npm install
-
-# 启动后端
-cd backend && npm run dev
-
-# 启动前端（新终端）
-cd frontend && npm run dev
 
 # 访问
 # 前端：http://localhost:5173
 # 后端：http://localhost:3000
 ```
 
-### 方式三：Nginx 反向代理部署
+### 方式二：本地开发（SQLite 模式，无需数据库）
 
 ```bash
-# 1. 构建前端
-cd frontend && npm run build
+# 安装依赖
+cd backend && npm install
+cd ../frontend && npm install
 
-# 2. 启动后端
-cd backend && npm start
+# 启动后端（终端 1）
+cd backend && npm run dev
 
-# 3. 配置 Nginx（示例配置）
-# /etc/nginx/conf.d/agentmonitor.conf
+# 启动前端（终端 2）
+cd frontend && npm run dev
 ```
 
-```nginx
-server {
-    listen 8080;
-    server_name your-server-ip;
-
-    root /path/to/agent-monitor/frontend/dist;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location /ws {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 86400;
-    }
-}
-```
+启动后访问前端 `http://localhost:5173`，注册账号即可使用；在「设置 → API Keys」中创建 Key 供 SDK 上报。
 
 ---
 
-## 🔧 数据库配置
+## 📦 SDK 接入
 
-### SQLite（默认，开发推荐）
+AgentMonitor 提供三种语言 SDK，3 行代码即可接入。完整说明见 **[SDK 快速接入指南](./docs/SDK-QUICKSTART.md)**。
 
-无需配置，数据存储在 `backend/data/agentmonitor.db`
-
-### 切换到 PostgreSQL（生产推荐）
-
-1. 安装 PostgreSQL 并创建数据库：
-```bash
-sudo apt install postgresql postgresql-contrib
-sudo -u postgres createdb agentmonitor
-```
-
-2. 设置环境变量（二选一）：
-
-方式 A - 环境变量：
-```bash
-export DB_TYPE=postgres
-export DATABASE_URL=postgresql://user:password@localhost:5432/agentmonitor
-```
-
-方式 B - `.env` 文件（在 backend 目录）：
-```env
-DB_TYPE=postgres
-DATABASE_URL=postgresql://user:password@localhost:5432/agentmonitor
-
-# 或分开配置
-DB_TYPE=postgres
-PG_HOST=localhost
-PG_PORT=5432
-PG_USER=postgres
-PG_PASSWORD=your-password
-PG_DATABASE=agentmonitor
-```
-
-3. 重启后端服务即可自动迁移
-
-### 数据库配置参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `DB_TYPE` | `sqlite` | 数据库类型：`sqlite` 或 `postgres` |
-| `SQLITE_PATH` | `./data/agentmonitor.db` | SQLite 文件路径 |
-| `DATABASE_URL` | - | PostgreSQL 连接字符串 |
-| `PG_HOST` | `localhost` | PostgreSQL 主机 |
-| `PG_PORT` | `5432` | PostgreSQL 端口 |
-| `PG_USER` | `postgres` | PostgreSQL 用户 |
-| `PG_PASSWORD` | `postgres` | PostgreSQL 密码 |
-| `PG_DATABASE` | `agentmonitor` | PostgreSQL 数据库名 |
-
----
-
-## 📦 环境变量
-
-后端 `.env` 完整配置：
-```env
-# 服务配置
-PORT=3000
-NODE_ENV=development
-
-# 数据库（二选一）
-DB_TYPE=sqlite                    # sqlite 或 postgres
-SQLITE_PATH=./data/agentmonitor.db
-
-# PostgreSQL（DB_TYPE=postgres 时使用）
-# DATABASE_URL=postgresql://user:pass@localhost:5432/agentmonitor
-
-# JWT 认证
-JWT_SECRET=your-secret-key-change-in-production
-JWT_EXPIRES_IN=7d
-```
-
----
-
-## 📸 截图
-
-| Dashboard | Sessions |
-|----------|----------|
-| ![Dashboard](./screenshots/dashboard.png) | ![Sessions](./screenshots/sessions.png) |
-
-| Quality | Cost |
-|---------|------|
-| ![Quality](./screenshots/quality.png) | ![Cost](./screenshots/cost.png) |
-
-| Alerts | Debugging |
-|--------|-----------|
-| ![Alerts](./screenshots/alerts.png) | ![Debugging](./screenshots/debugging.png) |
-
----
-
-## 🛠️ 技术栈
-
-| 层级 | 选型 |
-|------|------|
-| **前端** | React 19 + TailwindCSS + Vite + Recharts + Zustand |
-| **后端** | Node.js + Fastify + PostgreSQL + WebSocket |
-| **部署** | Docker + Nginx |
-| **SDK** | 原生 JavaScript，零依赖 |
-
----
-
-## 📁 项目结构
-
-```
-agent-monitor/
-├── backend/           # 后端服务
-│   ├── src/
-│   │   ├── routes/    # API 路由
-│   │   ├── services/  # 业务逻辑
-│   │   ├── db/        # 数据库
-│   │   └── middleware/
-│   └── Dockerfile
-├── frontend/          # 前端应用
-│   ├── src/
-│   │   ├── pages/     # 页面组件
-│   │   ├── components/
-│   │   ├── stores/    # Zustand 状态
-│   │   └── api/       # API 封装
-│   └── Dockerfile
-├── demo-agent/        # 演示 Agent
-│   └── src/
-│       ├── agent.ts   # Agent 实现
-│       └── index.ts   # 入口
-├── sdk/               # 监控 SDK
-│   └── simple.js      # 轻量 SDK
-└── docker-compose.yml
-```
-
----
-
-## 📝 API 文档
-
-### 认证
-- `POST /api/v1/auth/register` - 注册
-- `POST /api/v1/auth/login` - 登录
-
-### 项目
-- `GET /api/v1/projects` - 获取项目列表
-- `POST /api/v1/projects` - 创建项目
-
-### 调用追踪
-- `GET /api/v1/traces` - 获取调用列表
-- `POST /api/v1/traces` - 上报调用
-- `GET /api/v1/sessions/:id` - 获取会话详情
-
-### 断点调试
-- `GET /api/v1/breakpoints` - 获取断点列表
-- `POST /api/v1/breakpoints` - 设置断点
-- `PUT /api/v1/breakpoints/:id` - 更新断点
-- `DELETE /api/v1/breakpoints/:id` - 删除断点
-
-### 质量分析
-- `GET /api/v1/quality/score?projectId=xxx` - 获取质量分
-- `GET /api/v1/quality/trend?projectId=xxx&days=7` - 获取趋势
-
-### 成本分析
-- `GET /api/v1/cost/summary?projectId=xxx` - 成本概览
-- `GET /api/v1/cost/by-model?projectId=xxx` - 按模型统计
-- `GET /api/v1/cost/top?projectId=xxx` - 最贵调用
-
-### 告警
-- `GET /api/v1/alerts?projectId=xxx` - 获取告警
-- `POST /api/v1/alerts` - 创建告警
-- `PUT /api/v1/alerts/:id` - 更新告警
-- `DELETE /api/v1/alerts/:id` - 删除告警
-
----
-
-## 📦 SDK 支持
-
-AgentMonitor 提供 3 种语言的 SDK，3 行代码即可接入：
-
-### TypeScript/JavaScript
+### TypeScript / JavaScript
 
 ```bash
 npm install @agentmonitor/sdk
@@ -343,8 +146,8 @@ const monitor = AgentMonitor.init({
   baseUrl: 'http://localhost:3000',
 });
 
+// 包裹任意 Agent / LLM 调用即可自动上报
 const monitoredFn = monitor.wrap(async (query) => {
-  // 你的 Agent 逻辑
   return await callLLM(query);
 });
 ```
@@ -365,7 +168,6 @@ monitor = AgentMonitor.init(SDKConfig(
 
 @monitor.wrap
 def my_agent(query):
-    # 你的 Agent 逻辑
     return call_llm(query)
 ```
 
@@ -383,27 +185,60 @@ monitor := agentmonitor.Init(&agentmonitor.SDKConfig{
     BaseURL: "http://localhost:3000",
 })
 defer monitor.Close()
-
-result, err := monitor.Wrap(func() (interface{}, error) {
-    // 你的 Agent 逻辑
-    return callLLM(query)
-}, "my_agent", "")
 ```
 
-**完整文档**: [SDK 快速接入指南](./docs/SDK-QUICKSTART.md)
+---
+
+## 🛠️ 技术栈
+
+| 层级 | 选型 |
+|------|------|
+| **前端** | React 19 + TypeScript + Vite + TailwindCSS + Zustand + Recharts |
+| **后端** | Node.js + Fastify + WebSocket |
+| **数据库** | SQLite（开发开箱即用）／ PostgreSQL（生产推荐） |
+| **部署** | Docker + Docker Compose + Nginx |
+| **SDK** | TypeScript / Python / Go，框架无关、模型无关 |
 
 ---
 
-## 🤝 贡献
+## 📚 文档
 
-欢迎 Issue 和 PR！有问题随时提！
+- **[SDK 快速接入指南](./docs/SDK-QUICKSTART.md)** —— 三语言 SDK 接入与自动埋点
+- **[部署指南](./docs/DEPLOYMENT.md)** —— 本地开发、Docker、生产环境部署
+- **[生产部署指南](./docs/生产部署指南.md)** —— 服务器、Nginx、HTTPS 完整流程
+- **[用户指南](./docs/USER-GUIDE.md)** —— 各功能模块使用说明
+- **[产品设计文档](./docs/PRODUCT-DESIGN.md)** —— 产品定位与功能设计
+
+### 环境变量
+
+后端通过 `.env` 配置（参见 `.env.example`），关键项：
+
+```env
+# 服务
+PORT=3000
+NODE_ENV=development
+
+# 数据库：sqlite（默认）或 postgres
+DB_TYPE=sqlite
+SQLITE_PATH=./data/agentmonitor.db
+# DB_TYPE=postgres
+# DATABASE_URL=postgresql://user:pass@localhost:5432/agentmonitor
+
+# 认证
+JWT_SECRET=your-secret-key-change-in-production
+JWT_EXPIRES_IN=7d
+```
 
 ---
+
+## 🤝 参与贡献
+
+欢迎提交 Issue 与 Pull Request，一起把 Agent 可观测性做得更好！
 
 ## 📄 许可证
 
-MIT License - 见 [LICENSE](./LICENSE)
+[MIT License](./LICENSE)
 
 ---
 
-**如果这个项目帮到你，请给个 ⭐ Star！这是对我最大的支持！**
+**如果 AgentMonitor 帮到了你，欢迎点个 ⭐ Star，这是对我们最大的支持！**
