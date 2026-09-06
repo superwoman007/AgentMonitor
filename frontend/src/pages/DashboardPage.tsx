@@ -6,6 +6,7 @@ import { TrendChart } from '../components/TrendChart';
 import { TraceList } from '../components/TraceList';
 import { TraceDetail } from '../components/TraceDetail';
 import { ConnectionStatus, ConnectionStatusType } from '../components/ConnectionStatus';
+import { IntegrationHealthCard } from '../components/IntegrationHealthCard';
 import { RefreshButton } from '../components/RefreshButton';
 import { useAuthStore } from '../stores/authStore';
 import { useProjectStore } from '../stores/projectStore';
@@ -100,6 +101,7 @@ export function DashboardPage() {
         try {
           ws.send(JSON.stringify({ type: 'subscribe', projectId: currentProject.id }));
         } catch {
+          setWsStatus('waiting');
         }
       };
 
@@ -180,6 +182,10 @@ export function DashboardPage() {
         const params = new URLSearchParams(filter);
         navigate(`/traces?${params.toString()}`);
       }} />
+
+      <div className="mb-6">
+        <IntegrationHealthCard projectId={currentProject?.id} />
+      </div>
 
       <TrendChart data={trendData} />
 

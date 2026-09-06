@@ -6,7 +6,7 @@ const API_URL = process.env.API_URL || 'http://localhost:3000';
 test.describe('完整用户旅程 (Staging适配版)', () => {
   // 每个测试使用独立的用户
   const generateTestEmail = () => `e2e-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-  const testPassword = 'Test123456!';
+  const testPassword = 'Test1234567!';
 
   test('端到端：注册 → 登录 → 查看数据', async ({ page }) => {
     const testEmail = generateTestEmail();
@@ -478,9 +478,8 @@ test.describe('完整用户旅程 (Staging适配版)', () => {
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(2000);
     
-    // 过滤掉网络错误（正常的 404 等），只检查 JS 运行时错误
     const jsErrors = errors.filter(e => !e.includes('net::') && !e.includes('Failed to fetch'));
-    expect(jsErrors.length).toBe(0);
+    expect(jsErrors, `页面运行时错误: ${jsErrors.join(' | ')}`).toHaveLength(0);
   });
 
   test('端到端：导航侧边栏所有链接可访问', async ({ page }) => {

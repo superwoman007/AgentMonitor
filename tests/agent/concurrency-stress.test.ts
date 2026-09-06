@@ -33,7 +33,7 @@ describe('concurrency stress', () => {
       const agents = Array.from({ length: agentCount }).map((_, i) => {
         const monitor = new AgentMonitor({
           apiKey: ctx.apiKey,
-          baseUrl: 'http://localhost:3000',
+          baseUrl: process.env.API_URL || 'http://localhost:3000',
           flushInterval: 999_999,
           bufferSize: 999_999,
           sampleRate: 1,
@@ -112,7 +112,7 @@ describe('concurrency stress', () => {
 
       const monitor = new AgentMonitor({
         apiKey: ctx.apiKey,
-        baseUrl: 'http://localhost:3000',
+        baseUrl: process.env.API_URL || 'http://localhost:3000',
         flushInterval: 999_999,
         bufferSize: 999_999,
         sampleRate: 1,

@@ -424,6 +424,7 @@ describe('Evaluation Center API', () => {
             description: 'First evaluation experiment',
             dataset_id: datasetId,
             target_model_config_id: modelConfigId,
+            evaluator_id: evaluatorId,
             model_config: {
               model: 'gpt-4',
               temperature: 0.7
@@ -447,6 +448,75 @@ describe('Evaluation Center API', () => {
             name: 'No Dataset Experiment'
           })
           .expect(400);
+      });
+
+      it('should create a V2-ready experiment with dataset/target/suite versions', async () => {
+        const datasetVersionRes = await request(app.server)
+          .post(`/api/evaluation/datasets/${datasetId}/versions`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({ description: 'wizard snapshot' })
+          .expect(201);
+
+        const evaluatorVersionsRes = await request(app.server)
+          .get(`/api/evaluation/evaluators/${evaluatorId}/versions`)
+          .set('Authorization', `Bearer ${authToken}`)
+          .expect(200);
+        const evaluatorVersionId = evaluatorVersionsRes.body.versions[0].id;
+
+        const targetRes = await request(app.server)
+          .post('/api/v2/evaluation/targets')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            projectId,
+            name: 'Wizard Prompt Target',
+            type: 'prompt_model',
+            invocationConfig: {
+              modelConfigId,
+            },
+          })
+          .expect(201);
+
+        const suiteRes = await request(app.server)
+          .post('/api/v2/evaluation/suites')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            projectId,
+            name: 'Wizard Suite',
+            members: [
+              {
+                evaluatorVersionId,
+                alias: 'primary',
+                required: true,
+                ordinal: 1,
+              },
+            ],
+            aggregationConfig: {
+              strategy: 'all_required',
+            },
+          })
+          .expect(201);
+
+        const response = await request(app.server)
+          .post('/api/evaluation/experiments')
+          .set('Authorization', `Bearer ${authToken}`)
+          .send({
+            project_id: projectId,
+            name: 'V2 Ready Experiment',
+            dataset_id: datasetId,
+            evaluator_id: evaluatorId,
+            dataset_version_id: datasetVersionRes.body.id,
+            target_version_id: targetRes.body.version.id,
+            evaluator_suite_version_id: suiteRes.body.version.id,
+            default_run_config: {
+              temperature: 0.2,
+            },
+          })
+          .expect(201);
+
+        expect(response.body.lifecycle_status).toBe('ready');
+        expect(response.body.dataset_version_id).toBe(datasetVersionRes.body.id);
+        expect(response.body.target_version_id).toBe(targetRes.body.version.id);
+        expect(response.body.evaluator_suite_version_id).toBe(suiteRes.body.version.id);
       });
     });
 
@@ -476,14 +546,31 @@ describe('Evaluation Center API', () => {
 
     describe('POST /api/evaluation/experiments/:id/start', () => {
       it('should start an experiment and auto-run to completion', async () => {
+        // Truth Repair-8: start 立即返回 202 + running，评测在后台异步执行
         const response = await request(app.server)
           .post(`/api/evaluation/experiments/${experimentId}/start`)
           .set('Authorization', `Bearer ${authToken}`)
-          .expect(200);
+          .expect(202);
 
-        expect(response.body.status).toBe('completed');
+        expect(response.body.status).toBe('running');
         expect(response.body).toHaveProperty('started_at');
-        expect(response.body).toHaveProperty('completed_at');
+
+        // 轮询等待后台异步评测完成
+        const completedExperiment = await vi.waitFor(
+          async () => {
+            const res = await request(app.server)
+              .get(`/api/evaluation/experiments/${experimentId}`)
+              .set('Authorization', `Bearer ${authToken}`);
+            if (res.body.status !== 'completed') {
+              throw new Error(`experiment still ${res.body.status}`);
+            }
+            return res.body;
+          },
+          { timeout: 10000, interval: 100 }
+        );
+
+        expect(completedExperiment.status).toBe('completed');
+        expect(completedExperiment).toHaveProperty('completed_at');
       });
 
       it('should return 404 for non-existent experiment', async () => {

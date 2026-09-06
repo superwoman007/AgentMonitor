@@ -1,6 +1,16 @@
+import { vi, beforeAll, afterAll, describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
+import { callLLM } from '../src/services/llm-client.js';
+
+vi.mock('../src/services/llm-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../src/services/llm-client.js')>('../src/services/llm-client.js');
+  return {
+    ...actual,
+    callLLM: vi.fn(),
+  };
+});
 
 describe('Prompt Engineering API', () => {
   let app: FastifyInstance;
@@ -35,6 +45,28 @@ describe('Prompt Engineering API', () => {
       });
 
     projectId = projectResponse.body.id;
+
+    const mockedCallLLM = vi.mocked(callLLM);
+    mockedCallLLM.mockImplementation(async (options) => {
+      const input = options.messages.find((message) => message.role === 'user')?.content || '';
+      return {
+        content: `Playground response for: ${input}`,
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      };
+    });
+
+    const modelConfigResponse = await request(app.server)
+      .post('/api/model-configs')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        project_id: projectId,
+        name: 'Playground Test Model',
+        provider: 'openai',
+        model: 'gpt-4',
+        api_key: 'sk-test-prompt-key',
+      })
+      .expect(201);
+    modelConfigId = modelConfigResponse.body.id;
   });
 
   afterAll(async () => {
@@ -242,17 +274,16 @@ describe('Prompt Engineering API', () => {
           .send({
             project_id: projectId,
             prompt_id: promptId,
-            model: 'gpt-4',
+            prompt_version_id: versionId,
+            model_config_id: modelConfigId,
             input: 'Hello, how do I reset my password?',
-            output: 'You can reset your password by clicking...',
-            latency_ms: 1200,
-            status: 'success'
           })
           .expect(201);
 
         expect(response.body).toHaveProperty('id');
         expect(response.body.model).toBe('gpt-4');
         expect(response.body.status).toBe('success');
+        expect(response.body.output).toContain('Playground response for: Hello, how do I reset my password?');
         runId = response.body.id;
       });
 
@@ -483,7 +514,8 @@ describe('Prompt Engineering API', () => {
           project_id: projectId,
           name: 'GPT-4',
           provider: 'openai',
-          model: 'gpt-4'
+          model: 'gpt-4',
+          api_key: 'sk-test-gpt4-key',
         })
         .expect(201);
 
@@ -494,7 +526,8 @@ describe('Prompt Engineering API', () => {
           project_id: projectId,
           name: 'Claude 3',
           provider: 'anthropic',
-          model: 'claude-3-opus'
+          model: 'claude-3-opus',
+          api_key: 'sk-test-claude-key',
         })
         .expect(201);
 
@@ -505,11 +538,9 @@ describe('Prompt Engineering API', () => {
         .send({
           project_id: projectId,
           prompt_id: promptId,
+          prompt_version_id: versionId,
           model: 'gpt-4',
           input: 'Compare test',
-          output: 'Result from GPT-4',
-          latency_ms: 800,
-          status: 'success'
         })
         .expect(201);
 
@@ -520,11 +551,9 @@ describe('Prompt Engineering API', () => {
         .send({
           project_id: projectId,
           prompt_id: promptId,
+          prompt_version_id: versionId,
           model: 'claude-3-opus',
           input: 'Compare test',
-          output: 'Result from Claude',
-          latency_ms: 1200,
-          status: 'success'
         })
         .expect(201);
 

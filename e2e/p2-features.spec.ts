@@ -5,7 +5,7 @@ const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 test.describe('P2 功能深度测试 (Phase 2 - 自动化闭环)', () => {
   const generateTestEmail = () => `e2e-p2-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-  const testPassword = 'Test123456!';
+  const testPassword = 'Test1234567!';
 
   async function registerAndLogin(page: any) {
     const testEmail = generateTestEmail();
@@ -18,6 +18,13 @@ test.describe('P2 功能深度测试 (Phase 2 - 自动化闭环)', () => {
     await passwordInputs.nth(1).fill(testPassword);
     await page.click('button:has-text("注册")');
     await page.waitForURL(`${BASE_URL}/dashboard`, { timeout: 15000 });
+    // Wait for AppRoutes/ensureDefaultProject to finish before creating data
+    // through the API, avoiding two competing "Default Project" records.
+    await page.waitForResponse(
+      response => response.url().includes('/api/v1/projects') && response.request().method() === 'GET',
+      { timeout: 10000 },
+    ).catch(() => undefined);
+    await page.waitForTimeout(300);
     return testEmail;
   }
 
@@ -55,10 +62,13 @@ test.describe('P2 功能深度测试 (Phase 2 - 自动化闭环)', () => {
   }
 
   async function getOrCreateProject(page: any): Promise<string> {
-    try {
-      const projects = await apiRequest(page, 'GET', '/projects');
-      if (projects.length > 0) return projects[0].id;
-    } catch {}
+    for (let attempt = 0; attempt < 10; attempt++) {
+      try {
+        const projects = await apiRequest(page, 'GET', '/projects');
+        if (projects.length > 0) return projects[0].id;
+      } catch {}
+      await page.waitForTimeout(100);
+    }
     const project = await apiRequest(page, 'POST', '/projects', {
       name: 'Default Project',
       description: 'E2E default',
@@ -328,6 +338,10 @@ test.describe('P2 功能深度测试 (Phase 2 - 自动化闭环)', () => {
 
     // 验证保存成功（alert 或页面更新）
     await expect(page.locator('body')).toBeVisible();
+    const modalCancel = page.locator('.fixed button').filter({ hasText: /取消|Cancel/i }).last();
+    if (await modalCancel.isVisible().catch(() => false)) {
+      await modalCancel.click();
+    }
 
     // 切换到版本历史 Tab 验证新版本出现
     const versionsTab = page.locator('button').filter({ hasText: /版本历史|Versions/i }).first();

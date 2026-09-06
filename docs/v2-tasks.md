@@ -1,6 +1,6 @@
 # AgentMonitor v2.0 任务拆分与 TDD 计划
 
-> 目标：对齐同类平台核心能力，补齐 P0 功能闭环  
+> 目标：补齐核心能力，完善 P0 功能闭环
 > 方法论：TDD（Test-Driven Development）—— 先写测试，再写实现
 
 ---

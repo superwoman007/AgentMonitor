@@ -10,6 +10,42 @@ export function toInt(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+// 统计结果短 TTL 缓存。Dashboard 默认每 15s 轮询，而统计为全表聚合，
+// 高频重复计算会给数据库带来不必要压力；缓存 10s 可在实时性与开销间取得平衡。
+const STATS_CACHE_TTL_MS = 10_000;
+interface StatsCacheEntry<T> {
+  expiresAt: number;
+  promise: Promise<T>;
+}
+const statsCache = new Map<string, StatsCacheEntry<unknown>>();
+
+/**
+ * 以短 TTL 缓存异步统计结果，相同 key 在有效期内复用同一个 Promise（同时去重并发请求）。
+ * @param key - 缓存键（建议含项目 ID 与函数名）
+ * @param producer - 缓存未命中时的计算函数
+ * @returns 统计结果
+ */
+async function withStatsCache<T>(key: string, producer: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = statsCache.get(key);
+  if (hit && hit.expiresAt > now) {
+    return hit.promise as Promise<T>;
+  }
+  const entry: StatsCacheEntry<T> = {
+    expiresAt: now + STATS_CACHE_TTL_MS,
+    promise: producer(),
+  };
+  statsCache.set(key, entry as StatsCacheEntry<unknown>);
+  // 失败时清除缓存，避免把 rejected Promise 缓存到过期。
+  entry.promise.catch(() => {
+    if (statsCache.get(key) === (entry as StatsCacheEntry<unknown>)) {
+      statsCache.delete(key);
+    }
+  });
+  return entry.promise;
+}
+
+
 export function toFloat(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -39,6 +75,10 @@ export interface Stats {
 }
 
 export async function getProjectStats(projectId: string): Promise<Stats> {
+  return withStatsCache(`projectStats:${projectId}`, () => computeProjectStats(projectId));
+}
+
+async function computeProjectStats(projectId: string): Promise<Stats> {
   const isSqlite = config.dbType === 'sqlite';
   const [
     totalTraces,
@@ -208,6 +248,10 @@ export interface ObservationStats {
 }
 
 export async function getObservationStats(projectId: string): Promise<ObservationStats> {
+  return withStatsCache(`observationStats:${projectId}`, () => computeObservationStats(projectId));
+}
+
+async function computeObservationStats(projectId: string): Promise<ObservationStats> {
   const isSqlite = config.dbType === 'sqlite';
   
   const [

@@ -1,5 +1,5 @@
 import { callLLM } from './llm-client.js';
-import { getPromptById, getModelConfigById } from './prompts.js';
+import { getPromptById, getVersionById, getModelConfigById } from './prompts.js';
 
 export interface TargetCallOptions {
   input: string;
@@ -12,6 +12,7 @@ export interface TargetCallOptions {
 export interface TargetCallResult {
   output: string;
   latencyMs: number;
+  traceId?: string;
   tokenUsage?: {
     promptTokens: number;
     completionTokens: number;
@@ -24,12 +25,30 @@ export async function callTargetModel(options: TargetCallOptions): Promise<Targe
   const startTime = Date.now();
 
   try {
-    let modelConfig = options.modelConfigId ? await getModelConfigById(options.modelConfigId) : null;
+    const modelConfig = options.modelConfigId ? await getModelConfigById(options.modelConfigId) : null;
 
     let messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     let promptConfig: Record<string, unknown> = {};
 
-    if (options.promptId) {
+    if (options.promptVersionId) {
+      // Truth Repair-7: 优先按 promptVersionId 精确加载历史版本快照，保证历史实验可按版本复现
+      const version = await getVersionById(options.promptVersionId);
+      if (!version) {
+        throw new Error(`Prompt version not found: ${options.promptVersionId}`);
+      }
+      // 校验版本确实属于该 prompt，防止 promptId 与 promptVersionId 错配
+      if (options.promptId && version.prompt_id !== options.promptId) {
+        throw new Error(
+          `Prompt version ${options.promptVersionId} does not belong to prompt ${options.promptId} (belongs to ${version.prompt_id})`
+        );
+      }
+      messages = [
+        { role: 'system', content: version.content },
+        { role: 'user', content: options.input },
+      ];
+      promptConfig = version.config || {};
+    } else if (options.promptId) {
+      // 未指定版本时回退到 prompt 当前内容（用于未绑定版本的临时运行）
       const prompt = await getPromptById(options.promptId);
       if (!prompt) {
         throw new Error(`Prompt not found: ${options.promptId}`);

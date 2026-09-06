@@ -49,6 +49,8 @@ import {
   triggerAutoEvalTask,
 } from '../services/evaluation.js';
 import { runExperiment } from '../services/evaluation-runner.js';
+import { prepareRun, validateExperiment, type ValidationIssue } from '../services/evaluation-run.js';
+import { getEvaluationWorker } from '../services/evaluation-worker.js';
 import { broadcastToProject } from './ws.js';
 
 function getProjectId(request: { query?: unknown; body?: unknown }): string | null {
@@ -561,6 +563,12 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
       prompt_version_id?: string;
       target_model_config_id?: string;
       run_config?: Record<string, unknown>;
+      evaluator_id?: string;
+      dataset_version_id?: string;
+      target_version_id?: string;
+      evaluator_suite_version_id?: string;
+      default_run_config?: Record<string, unknown>;
+      default_gate_config?: Record<string, unknown>;
     };
 
     if (!body.project_id) {
@@ -580,7 +588,15 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
 
     const experiment = await createExperiment(
       body.project_id, body.name, body.dataset_id, body.description, body.model_config,
-      body.prompt_id, body.prompt_version_id, body.target_model_config_id, body.run_config
+      body.prompt_id, body.prompt_version_id, body.target_model_config_id, body.run_config,
+      body.evaluator_id,
+      {
+        datasetVersionId: body.dataset_version_id,
+        targetVersionId: body.target_version_id,
+        evaluatorSuiteVersionId: body.evaluator_suite_version_id,
+        defaultRunConfig: body.default_run_config,
+        defaultGateConfig: body.default_gate_config,
+      }
     );
     reply.code(201).send(experiment);
   });
@@ -625,16 +641,67 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const params = request.params as { id: string };
-    const experiment = await startExperiment(params.id);
 
+    // PR-08：V2 实验（绑定了 dataset_version_id + target_version_id + evaluator_suite_version_id）
+    // 走新的 Run/RunItem/Score/RunEvent 模型；legacy 实验继续走原 runExperiment 以保持兼容。
+    const experiment = await getExperimentById(params.id);
     if (!experiment) {
       reply.code(404).send({ error: 'Experiment not found' });
       return;
     }
 
-    // EV-01: 自动执行评测引擎
-    try {
-      await runExperiment(params.id, (current, total, itemResult) => {
+    const isV2 = !!(
+      (experiment as unknown as { target_version_id?: string }).target_version_id ||
+      (experiment as unknown as { evaluator_suite_version_id?: string }).evaluator_suite_version_id
+    );
+
+    if (isV2) {
+      const validation = await validateExperiment(params.id);
+      if (!validation.valid) {
+        reply.code(400).send({
+          error: 'Experiment validation failed',
+          issues: validation.issues as ValidationIssue[],
+        });
+        return;
+      }
+
+      let prep;
+      try {
+        prep = await prepareRun(params.id, {
+          triggerType: 'manual',
+          requestedBy: request.userId,
+        });
+      } catch (error) {
+        const issues = (error as Error & { issues?: ValidationIssue[] }).issues;
+        if (issues) {
+          reply.code(400).send({ error: 'Experiment validation failed', issues });
+          return;
+        }
+        throw error;
+      }
+
+      // PR-09：prepareRun 已把 RunItem 入队（status='pending'），
+      // 立即返回 202，由持久化数据库 Worker 通过 claim/lease 机制异步执行。
+      reply.code(202).send({ run: prep.run, experiment_id: params.id });
+
+      // 确保 Worker 已启动（测试环境可能未在 buildApp 时启动），并唤醒一次以缩短首个任务的等待
+      const worker = getEvaluationWorker();
+      void worker.start().then(() => worker.poke());
+      return;
+    }
+
+    const startedLegacy = await startExperiment(params.id);
+
+    if (!startedLegacy) {
+      reply.code(404).send({ error: 'Experiment not found' });
+      return;
+    }
+
+    // Truth Repair-8: start 路由标记 running 后立即返回 202，评测在后台异步执行（最小 DB Worker 模式）。
+    // 执行进度仍通过 WebSocket 广播 experiment_progress；前端通过轮询 GET /experiments/:id 获取最终状态。
+    // 注意：此处刻意不 await runExperiment，避免长耗时评测阻塞 HTTP 请求导致超时。
+    setImmediate(() => {
+      runExperiment(params.id, (current, total, itemResult) => {
         broadcastToProject(experiment.project_id, {
           type: 'experiment_progress',
           experiment_id: params.id,
@@ -643,14 +710,16 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
           completion_rate: Math.round((current / total) * 10000) / 100,
           item_result: itemResult,
         });
+      }).catch((error) => {
+        // 异步执行失败时记录错误日志；runExperiment 内部已将实验标记为 failed，前端轮询即可感知
+        request.log.error(
+          { err: error, experimentId: params.id },
+          'Background experiment execution failed'
+        );
       });
-      const freshExperiment = await getExperimentById(params.id);
-      reply.send(freshExperiment || experiment);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Experiment execution failed';
-      const freshExperiment = await getExperimentById(params.id);
-      reply.send(freshExperiment || { ...experiment, error: message });
-    }
+    });
+
+    reply.code(202).send(startedLegacy);
   });
 
   app.post('/experiments/:id/complete', { preHandler: authMiddleware }, async (request, reply) => {
@@ -723,6 +792,61 @@ export async function evaluationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const params = request.params as { id: string };
+    const experiment = await getExperimentById(params.id);
+    if (!experiment) {
+      reply.code(404).send({ error: 'Experiment not found' });
+      return;
+    }
+
+    // PR-08：V2 实验报告从最新 Run 读取；legacy 实验继续从 evaluation_results 聚合
+    const isV2 = !!(
+      (experiment as unknown as { target_version_id?: string }).target_version_id ||
+      (experiment as unknown as { evaluator_suite_version_id?: string }).evaluator_suite_version_id
+    );
+
+    if (isV2) {
+      const { getLatestRunByExperiment, getRunReport } = await import('../services/evaluation-run.js');
+      const latestRun = await getLatestRunByExperiment(params.id);
+      if (!latestRun) {
+        reply.send({
+          totalItems: 0,
+          passedCount: 0,
+          failedCount: 0,
+          passRate: 0,
+          avgScore: 0,
+          avgLatency: 0,
+          scoreDistribution: [],
+          latencyDistribution: [],
+          calibratedCount: 0,
+          calibrationRate: 0,
+          run: null,
+        });
+        return;
+      }
+      const runReport = await getRunReport(latestRun.id);
+      reply.send({
+        totalItems: runReport?.totalItems ?? 0,
+        passedCount: runReport?.passedItems ?? 0,
+        failedCount: runReport?.failedItems ?? 0,
+        passRate: runReport?.passRate ?? 0,
+        avgScore: runReport?.avgScore ?? 0,
+        avgLatency: runReport?.avgLatencyMs ?? 0,
+        scoreDistribution: (runReport?.scoreDistribution ?? []).map((d) => ({ score: d.bucket, count: d.count })),
+        latencyDistribution: [],
+        calibratedCount: 0,
+        calibrationRate: 0,
+        run: {
+          id: latestRun.id,
+          runNumber: latestRun.run_number,
+          status: latestRun.status,
+          summary: latestRun.summary,
+          gateResult: latestRun.gate_result,
+        },
+        items: runReport?.items ?? [],
+      });
+      return;
+    }
+
     const report = await getExperimentReport(params.id);
     reply.send(report);
   });

@@ -30,8 +30,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
   name VARCHAR(255) NOT NULL,
   key_hash VARCHAR(255) UNIQUE NOT NULL,
   prefix VARCHAR(20) NOT NULL,
+  encrypted_key TEXT,
   last_used_at TIMESTAMPTZ,
   revoked_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -102,9 +104,16 @@ CREATE TABLE IF NOT EXISTS traces (
   latency_ms INTEGER,
   status VARCHAR(20) NOT NULL DEFAULT 'pending',
   error TEXT,
+  trace_id VARCHAR(255),
+  span_id VARCHAR(255),
+  parent_span_id VARCHAR(255),
+  parent_trace_id UUID REFERENCES traces(id) ON DELETE SET NULL,
+  latest_eval_score DOUBLE PRECISION,
+  latest_eval_passed BOOLEAN,
   prompt_id UUID REFERENCES prompts(id) ON DELETE SET NULL,
   prompt_version_id UUID REFERENCES prompt_versions(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_traces_project_id ON traces(project_id);
@@ -140,6 +149,8 @@ CREATE TABLE IF NOT EXISTS breakpoints (
   type VARCHAR(20) NOT NULL,
   condition TEXT NOT NULL,
   enabled BOOLEAN DEFAULT true,
+  hit_threshold INTEGER DEFAULT 0,
+  hit_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

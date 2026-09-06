@@ -10,6 +10,7 @@ vi.mock('@/api', () => ({
       me: vi.fn(),
     },
     setAuthToken: vi.fn(),
+    setAuthRefreshToken: vi.fn(),
     clearAuthToken: vi.fn(),
   },
 }));
@@ -47,7 +48,7 @@ describe('AuthStore', () => {
   describe('login', () => {
     it('应该成功登录并更新状态', async () => {
       const mockUser = { id: 'u1', email: 'test@example.com', name: 'Test', created_at: '', updated_at: '' };
-      mockedApi.auth.login.mockResolvedValue({ token: 'jwt-token', user: mockUser as any });
+      mockedApi.auth.login.mockResolvedValue({ token: 'jwt-token', refreshToken: 'refresh-token', user: mockUser as any });
 
       await act(async () => {
         await useAuthStore.getState().login('test@example.com', 'password');
@@ -59,6 +60,7 @@ describe('AuthStore', () => {
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
       expect(mockedApi.setAuthToken).toHaveBeenCalledWith('jwt-token');
+      expect(mockedApi.setAuthRefreshToken).toHaveBeenCalledWith('refresh-token');
     });
 
     it('应该在登录失败时设置错误', async () => {
@@ -89,7 +91,7 @@ describe('AuthStore', () => {
       // Resolve and complete
       const mockUser = { id: 'u1', email: 'test@example.com', name: 'Test', created_at: '', updated_at: '' };
       await act(async () => {
-        resolveLogin!({ token: 'jwt', user: mockUser });
+        resolveLogin!({ token: 'jwt', refreshToken: 'refresh', user: mockUser });
       });
       await loginPromise;
 
@@ -100,7 +102,7 @@ describe('AuthStore', () => {
   describe('register', () => {
     it('应该成功注册并更新状态', async () => {
       const mockUser = { id: 'u2', email: 'new@example.com', name: 'New User', created_at: '', updated_at: '' };
-      mockedApi.auth.register.mockResolvedValue({ token: 'new-token', user: mockUser as any });
+      mockedApi.auth.register.mockResolvedValue({ token: 'new-token', refreshToken: 'new-refresh-token', user: mockUser as any });
 
       await act(async () => {
         await useAuthStore.getState().register('new@example.com', 'password', 'New User');

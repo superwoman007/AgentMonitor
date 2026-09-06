@@ -123,17 +123,32 @@ describe('Evaluation Runner with Real Target (EV-03)', () => {
           dataset_id: datasetId,
           target_model_config_id: modelConfigId,
           prompt_id: promptId,
+          evaluator_id: evaluatorId,
         })
         .expect(201);
 
       const expId = experimentResponse.body.id;
 
-      const startResponse = await request(app.server)
+      // Truth Repair-8: start 立即返回 202，后台异步执行
+      await request(app.server)
         .post(`/api/evaluation/experiments/${expId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
 
-      expect(startResponse.body.status).toBe('completed');
+      // 轮询等待后台异步评测完成
+      const completed = await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${expId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'completed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+          return res.body;
+        },
+        { timeout: 10000, interval: 100 }
+      );
+      expect(completed.status).toBe('completed');
 
       // Verify results
       const resultsResponse = await request(app.server)
@@ -164,15 +179,30 @@ describe('Evaluation Runner with Real Target (EV-03)', () => {
           dataset_id: datasetId,
           target_model_config_id: modelConfigId,
           prompt_id: promptId,
+          evaluator_id: evaluatorId,
         })
         .expect(201);
 
       const expId = experimentResponse.body.id;
 
+      // Truth Repair-8: start 立即返回 202，后台异步执行
       await request(app.server)
         .post(`/api/evaluation/experiments/${expId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
+
+      // 轮询等待后台异步评测完成，确保 callLLM 已被调用后再检查 mock
+      await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${expId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'completed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+        },
+        { timeout: 10000, interval: 100 }
+      );
 
       const mockedCallLLM = vi.mocked(callLLM);
       const lastCall = mockedCallLLM.mock.calls[mockedCallLLM.mock.calls.length - 1];
@@ -195,13 +225,29 @@ describe('Evaluation Runner with Real Target (EV-03)', () => {
 
       const expId = experimentResponse.body.id;
 
-      const startResponse = await request(app.server)
+      // Truth Repair-8: start 立即返回 202，后台异步执行后实验被标记 failed
+      await request(app.server)
         .post(`/api/evaluation/experiments/${expId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
 
-      expect(startResponse.body.status).toBe('failed');
-      expect(startResponse.body.results_summary?.error || startResponse.body.error).toContain('target');
+      // 轮询等待后台异步执行失败
+      const failed = await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${expId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'failed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+          return res.body;
+        },
+        { timeout: 10000, interval: 100 }
+      );
+
+      expect(failed.status).toBe('failed');
+      // Runner 先校验 target（target_model_config_id/prompt_id），legacy 实验缺少 target 时在此处明确失败
+      expect(failed.results_summary?.error || failed.error).toContain('target');
     });
   });
 
@@ -215,15 +261,30 @@ describe('Evaluation Runner with Real Target (EV-03)', () => {
           name: 'Report Experiment',
           dataset_id: datasetId,
           target_model_config_id: modelConfigId,
+          evaluator_id: evaluatorId,
         })
         .expect(201);
 
       const expId = experimentResponse.body.id;
 
+      // Truth Repair-8: start 立即返回 202，后台异步执行
       await request(app.server)
         .post(`/api/evaluation/experiments/${expId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
+
+      // 轮询等待后台异步评测完成
+      await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${expId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'completed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+        },
+        { timeout: 10000, interval: 100 }
+      );
 
       const reportResponse = await request(app.server)
         .get(`/api/evaluation/experiments/${expId}/report`)

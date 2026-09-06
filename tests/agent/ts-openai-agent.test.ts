@@ -29,7 +29,7 @@ describe('Layer 4: SDK + OpenAI 模拟链路', () => {
   it('autoInstrument 拦截实例方法并上报成功 trace', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });
@@ -122,7 +122,7 @@ describe('Layer 4: SDK + OpenAI 模拟链路', () => {
   it('autoInstrument 拦截失败调用并上报错误 trace', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });
@@ -181,7 +181,7 @@ describe('Layer 4: SDK + OpenAI 模拟链路', () => {
   it('SDK 手动 traceLLM 上报完整数据', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });

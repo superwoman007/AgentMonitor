@@ -4,7 +4,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 
 test.describe('P1 功能 UI 验证', () => {
   const generateTestEmail = () => `e2e-p1-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-  const testPassword = 'Test123456!';
+  const testPassword = 'Test1234567!';
 
   async function registerAndLogin(page: any) {
     const testEmail = generateTestEmail();

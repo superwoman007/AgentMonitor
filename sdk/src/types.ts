@@ -1,5 +1,11 @@
 export interface SDKConfig {
   apiKey: string;
+  /**
+   * 项目 ID。
+   * Prompt Runtime 等 V2 接口需要显式 projectId（JWT 模式无法从 apiKey 解析）。
+   * 若未提供，SDK 会尝试从 apiKey 中按 `<projectId>_<rest>` 约定解析。
+   */
+  projectId?: string;
   baseUrl?: string;
   apiPrefix?: string;
   disabled?: boolean;
@@ -9,6 +15,10 @@ export interface SDKConfig {
   sampleRate?: number; // 0-1，采样率，默认 1.0（全量）
   alwaysCapture?: Array<'error' | 'breakpoint' | 'session'>; // 强制上报的事件类型
   enableSpanWrite?: boolean; // 是否启用 Span 级追踪写入
+  /**
+   * Prompt Runtime 缓存 TTL（毫秒），默认 60000。
+   */
+  promptCacheTtlMs?: number;
 }
 
 export interface SessionData {
@@ -41,6 +51,20 @@ export interface ToolCallData {
 }
 
 export interface TraceData {
+  /**
+   * 显式链路 ID。W3C 风格 32 位十六进制或 UUID。
+   * 若不传，SDK 在 trace() 时生成一次并贯穿整棵树。
+   */
+  traceId?: string;
+  /**
+   * 显式 Span ID。根 Span 建议由调用方或 SDK 生成；
+   * 不传则由 SDK 生成。服务端以该 ID 作为根 Span 的 span_id。
+   */
+  spanId?: string;
+  /**
+   * 父 Span ID。根节点为空；嵌套子 trace/span 才需要传入。
+   */
+  parentSpanId?: string;
   sessionId?: string;
   agentId?: string;
   traceType: string;
@@ -51,14 +75,27 @@ export interface TraceData {
   startedAt?: string;
   endedAt?: string;
   latencyMs?: number;
-  status?: 'success' | 'error';
+  status?: 'success' | 'error' | 'ok' | 'cancelled' | 'timeout';
   error?: string;
+}
+
+export interface PromptRef {
+  id: string;
+  versionId: string;
+  name?: string;
+  versionNumber?: number;
+  environment?: string;
 }
 
 export interface LLMRequest {
   model: string;
   messages?: Array<{ role: string; content: string }>;
   prompt?: string;
+  /**
+   * PR-12：如果本次 LLM 调用使用了通过 Runtime 解析的 Prompt，
+   * 传入该引用会自动写入 LLM Span 的 attributes，便于在 Trace 中聚合 prompt 版本。
+   */
+  promptRef?: PromptRef;
   [key: string]: unknown;
 }
 

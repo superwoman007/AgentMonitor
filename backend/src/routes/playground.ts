@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../middleware/auth.js';
-import { createRun, getRunById, getRunsByProject } from '../services/prompts.js';
-import { compareModels } from '../services/playground.js';
+import { getRunById, getRunsByProject } from '../services/prompts.js';
+import { compareModels, runPlaygroundModel } from '../services/playground.js';
 
 export async function playgroundRoutes(app: FastifyInstance): Promise<void> {
   app.post('/run', { preHandler: authMiddleware }, async (request, reply) => {
@@ -14,20 +14,18 @@ export async function playgroundRoutes(app: FastifyInstance): Promise<void> {
       project_id: string;
       prompt_id?: string;
       prompt_version_id?: string;
-      model: string;
+      model_config_id?: string;
+      model?: string;
+      target_version_id?: string;
       input: string;
-      output?: string;
-      latency_ms?: number;
-      status?: string;
-      metadata?: Record<string, unknown>;
     };
 
     if (!body.project_id) {
       reply.code(400).send({ error: 'project_id is required' });
       return;
     }
-    if (!body.model) {
-      reply.code(400).send({ error: 'model is required' });
+    if (!body.model_config_id && !body.model && !body.target_version_id) {
+      reply.code(400).send({ error: 'model_config_id, model or target_version_id is required' });
       return;
     }
     if (!body.input) {
@@ -35,8 +33,21 @@ export async function playgroundRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
 
-    const run = await createRun(body.project_id, body);
-    reply.code(201).send(run);
+    try {
+      const run = await runPlaygroundModel({
+        projectId: body.project_id,
+        input: body.input,
+        promptId: body.prompt_id,
+        promptVersionId: body.prompt_version_id,
+        modelConfigId: body.model_config_id,
+        model: body.model,
+        targetVersionId: body.target_version_id,
+      });
+      reply.code(201).send(run);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Playground run failed';
+      reply.code(400).send({ error: message });
+    }
   });
 
   app.get('/runs', { preHandler: authMiddleware }, async (request, reply) => {

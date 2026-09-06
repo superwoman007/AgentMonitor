@@ -4,10 +4,37 @@ import { Layout } from '../components/Layout';
 import { RefreshButton } from '../components/RefreshButton';
 import { FilterBar } from '../components/FilterBar';
 import { EvalWizard } from '../components/evaluation/EvalWizard';
-import { useFilterParams, TraceFilters } from '../hooks/useFilterParams';
+import { useFilterParams } from '../hooks/useFilterParams';
 import { useTranslation } from '../App';
 import { api, Trace, Dataset, TraceEvalResult, TraceTreeResponse } from '../api';
 import { useProjectStore } from '../stores/projectStore';
+
+function ExpandableBlock({ label, value, isError }: { label: string; value: unknown; isError?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  const lines = text.split('\n');
+  const shouldCollapse = lines.length > 6 || text.length > 400;
+  const previewText = shouldCollapse && !expanded ? lines.slice(0, 6).join('\n') + (lines.length > 6 ? '\n...' : '') : text;
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between mb-1">
+        <p className={`text-xs ${isError ? 'text-red-500' : 'text-gray-500'}`}>{label}</p>
+        {shouldCollapse && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-blue-600 hover:text-blue-800"
+          >
+            {expanded ? '收起' : '展开'}
+          </button>
+        )}
+      </div>
+      <pre className={`p-3 rounded text-xs overflow-auto ${isError ? 'bg-red-50 text-red-700' : 'bg-gray-50'} ${expanded ? 'max-h-[600px]' : 'max-h-40'}`}>
+        {previewText}
+      </pre>
+    </div>
+  );
+}
 
 export function TracesPage() {
   const { t } = useTranslation();
@@ -185,6 +212,13 @@ export function TracesPage() {
 
   const formatTime = (iso: string) => new Date(iso).toLocaleString();
 
+  const formatPreview = (val: unknown, maxLen = 80): string => {
+    if (val === null || val === undefined) return '';
+    const str = typeof val === 'string' ? val : JSON.stringify(val);
+    if (str.length <= maxLen) return str;
+    return str.slice(0, maxLen) + '...';
+  };
+
   const traceTypes = Array.from(new Set(traces.map(t => t.trace_type)));
 
   return (
@@ -293,6 +327,16 @@ export function TracesPage() {
                         </div>
                       </div>
                       <div className="mt-1 text-xs text-gray-400 pl-7">{formatDuration(trace.latency_ms)}</div>
+                      {(trace.input !== undefined && trace.input !== null) && (
+                        <div className="mt-1 text-xs text-gray-500 pl-7 truncate" title={formatPreview(trace.input, 500)}>
+                          <span className="text-gray-400">{t.input}:</span> {formatPreview(trace.input)}
+                        </div>
+                      )}
+                      {(trace.output !== undefined && trace.output !== null) && (
+                        <div className="mt-0.5 text-xs text-gray-500 pl-7 truncate" title={formatPreview(trace.output, 500)}>
+                          <span className="text-gray-400">{t.output}:</span> {formatPreview(trace.output)}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
@@ -377,30 +421,15 @@ export function TracesPage() {
                   )}
 
                   {selectedTrace.input !== undefined && selectedTrace.input !== null && (
-                    <div className="mb-4">
-                      <p className="text-xs text-gray-500 mb-1">{t.input}</p>
-                      <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
-                        {typeof selectedTrace.input === 'string' ? selectedTrace.input : JSON.stringify(selectedTrace.input, null, 2)}
-                      </pre>
-                    </div>
+                    <ExpandableBlock label={t.input} value={selectedTrace.input} />
                   )}
 
                   {selectedTrace.output !== undefined && selectedTrace.output !== null && (
-                    <div className="mb-4">
-                      <p className="text-xs text-gray-500 mb-1">{t.output}</p>
-                      <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-40">
-                        {typeof selectedTrace.output === 'string' ? selectedTrace.output : JSON.stringify(selectedTrace.output, null, 2)}
-                      </pre>
-                    </div>
+                    <ExpandableBlock label={t.output} value={selectedTrace.output} />
                   )}
 
                   {selectedTrace.error && (
-                    <div className="mb-4">
-                      <p className="text-xs text-red-500 mb-1">{t.error}</p>
-                      <pre className="bg-red-50 p-3 rounded text-xs text-red-700 overflow-auto max-h-40">
-                        {selectedTrace.error}
-                      </pre>
-                    </div>
+                    <ExpandableBlock label={t.error} value={selectedTrace.error} isError />
                   )}
                 </div>
 

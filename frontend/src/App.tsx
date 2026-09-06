@@ -18,6 +18,8 @@ const CostPage = lazy(() => import('./pages/CostPage').then(m => ({ default: m.C
 const AlertsPage = lazy(() => import('./pages/AlertsPage').then(m => ({ default: m.AlertsPage })));
 const DecisionsPage = lazy(() => import('./pages/DecisionsPage').then(m => ({ default: m.DecisionsPage })));
 const EvaluationPage = lazy(() => import('./pages/EvaluationPage').then(m => ({ default: m.EvaluationPage })));
+const RunDetailPage = lazy(() => import('./pages/RunDetailPage').then(m => ({ default: m.RunDetailPage })));
+const RunComparePage = lazy(() => import('./pages/RunComparePage').then(m => ({ default: m.RunComparePage })));
 const PromptsPage = lazy(() => import('./pages/PromptsPage').then(m => ({ default: m.PromptsPage })));
 const TracesPage = lazy(() => import('./pages/TracesPage').then(m => ({ default: m.TracesPage })));
 const TraceDetailPage = lazy(() => import('./pages/TraceDetailPage').then(m => ({ default: m.TraceDetailPage })));
@@ -84,6 +86,7 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/sessions" element={<ProtectedRoute><SessionsPage /></ProtectedRoute>} />
         <Route path="/sessions/:id" element={<ProtectedRoute><SessionDetailPage /></ProtectedRoute>} />
         <Route path="/debugging" element={<ProtectedRoute><DebuggingPage /></ProtectedRoute>} />
@@ -93,6 +96,8 @@ function AppRoutes() {
         <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
         <Route path="/decisions" element={<ProtectedRoute><DecisionsPage /></ProtectedRoute>} />
         <Route path="/evaluation" element={<ProtectedRoute><EvaluationPage /></ProtectedRoute>} />
+        <Route path="/evaluation/runs/compare" element={<ProtectedRoute><RunComparePage /></ProtectedRoute>} />
+        <Route path="/evaluation/runs/:id" element={<ProtectedRoute><RunDetailPage /></ProtectedRoute>} />
         <Route path="/prompts" element={<ProtectedRoute><PromptsPage /></ProtectedRoute>} />
         <Route path="/traces" element={<ProtectedRoute><TracesPage /></ProtectedRoute>} />
         <Route path="/traces/:id" element={<ProtectedRoute><TraceDetailPage /></ProtectedRoute>} />

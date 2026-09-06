@@ -1,4 +1,4 @@
-import { query, queryOne, run } from '../db/index.js';
+import { query, queryOne, run, toDbJson, fromDbJson } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 
@@ -74,13 +74,13 @@ export async function createDecision(data: DecisionCreateData): Promise<Decision
       data.projectId,
       data.sessionId || null,
       data.decisionType,
-      data.context ? JSON.stringify(data.context) : null,
+      toDbJson(data.context ?? null),
       data.selectedOption,
       data.confidence ?? null,
       data.reasoning ?? null,
       data.decisionMaker,
       data.latencyMs ?? null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
+      toDbJson(data.metadata ?? null),
     ]
   );
 
@@ -89,8 +89,8 @@ export async function createDecision(data: DecisionCreateData): Promise<Decision
 
   const parsedDecision: Decision = {
     ...decision,
-    context: decision.context ? JSON.parse(decision.context as unknown as string) : null,
-    metadata: decision.metadata ? JSON.parse(decision.metadata as unknown as string) : null,
+    context: fromDbJson(decision.context) as Record<string, unknown> | null,
+    metadata: fromDbJson(decision.metadata) as Record<string, unknown> | null,
   };
 
   // Create options
@@ -108,9 +108,9 @@ export async function createDecision(data: DecisionCreateData): Promise<Decision
           parsedDecision.id,
           opt.name,
           opt.score ?? null,
-          opt.pros ? JSON.stringify(opt.pros) : null,
-          opt.cons ? JSON.stringify(opt.cons) : null,
-          opt.metadata ? JSON.stringify(opt.metadata) : null,
+          toDbJson(opt.pros ?? null),
+          toDbJson(opt.cons ?? null),
+          toDbJson(opt.metadata ?? null),
         ]
       );
 
@@ -119,9 +119,9 @@ export async function createDecision(data: DecisionCreateData): Promise<Decision
 
       options.push({
         ...option,
-        pros: option.pros ? JSON.parse(option.pros as unknown as string) : null,
-        cons: option.cons ? JSON.parse(option.cons as unknown as string) : null,
-        metadata: option.metadata ? JSON.parse(option.metadata as unknown as string) : null,
+        pros: fromDbJson(option.pros) as string[] | null,
+        cons: fromDbJson(option.cons) as string[] | null,
+        metadata: fromDbJson(option.metadata) as Record<string, unknown> | null,
       });
     }
   }
@@ -149,13 +149,13 @@ export async function getDecisionById(id: string): Promise<DecisionWithOptions |
 
   return {
     ...decision,
-    context: decision.context ? JSON.parse(decision.context as unknown as string) : null,
-    metadata: decision.metadata ? JSON.parse(decision.metadata as unknown as string) : null,
+    context: fromDbJson(decision.context) as Record<string, unknown> | null,
+    metadata: fromDbJson(decision.metadata) as Record<string, unknown> | null,
     options: options.map(opt => ({
       ...opt,
-      pros: opt.pros ? JSON.parse(opt.pros as unknown as string) : null,
-      cons: opt.cons ? JSON.parse(opt.cons as unknown as string) : null,
-      metadata: opt.metadata ? JSON.parse(opt.metadata as unknown as string) : null,
+      pros: fromDbJson(opt.pros) as string[] | null,
+      cons: fromDbJson(opt.cons) as string[] | null,
+      metadata: fromDbJson(opt.metadata) as Record<string, unknown> | null,
     })),
   };
 }
@@ -182,13 +182,13 @@ export async function getDecisionsByProject(
 
     result.push({
       ...decision,
-      context: decision.context ? JSON.parse(decision.context as unknown as string) : null,
-      metadata: decision.metadata ? JSON.parse(decision.metadata as unknown as string) : null,
+      context: fromDbJson(decision.context) as Record<string, unknown> | null,
+      metadata: fromDbJson(decision.metadata) as Record<string, unknown> | null,
       options: options.map(opt => ({
         ...opt,
-        pros: opt.pros ? JSON.parse(opt.pros as unknown as string) : null,
-        cons: opt.cons ? JSON.parse(opt.cons as unknown as string) : null,
-        metadata: opt.metadata ? JSON.parse(opt.metadata as unknown as string) : null,
+        pros: fromDbJson(opt.pros) as string[] | null,
+        cons: fromDbJson(opt.cons) as string[] | null,
+        metadata: fromDbJson(opt.metadata) as Record<string, unknown> | null,
       })),
     });
   }
@@ -211,13 +211,13 @@ export async function getDecisionsBySession(sessionId: string): Promise<Decision
 
     result.push({
       ...decision,
-      context: decision.context ? JSON.parse(decision.context as unknown as string) : null,
-      metadata: decision.metadata ? JSON.parse(decision.metadata as unknown as string) : null,
+      context: fromDbJson(decision.context) as Record<string, unknown> | null,
+      metadata: fromDbJson(decision.metadata) as Record<string, unknown> | null,
       options: options.map(opt => ({
         ...opt,
-        pros: opt.pros ? JSON.parse(opt.pros as unknown as string) : null,
-        cons: opt.cons ? JSON.parse(opt.cons as unknown as string) : null,
-        metadata: opt.metadata ? JSON.parse(opt.metadata as unknown as string) : null,
+        pros: fromDbJson(opt.pros) as string[] | null,
+        cons: fromDbJson(opt.cons) as string[] | null,
+        metadata: fromDbJson(opt.metadata) as Record<string, unknown> | null,
       })),
     });
   }

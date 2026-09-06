@@ -12,8 +12,9 @@ import {
   type TestContext,
 } from './helpers.js';
 
-const WS_URL = 'ws://localhost:3000/ws';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
+// WebSocket 地址由 API_URL 派生（http→ws、https→wss），保证测试服务端口可通过环境变量切换。
+const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
 
 /** Wait for a specific message type over an open WebSocket */
 function waitForWsMessage(ws: WebSocket, expectedType: string, timeoutMs = 10000): Promise<any> {
@@ -60,8 +61,10 @@ function waitForWsMessage(ws: WebSocket, expectedType: string, timeoutMs = 10000
 }
 
 /** Connect, subscribe, and authenticate a WebSocket */
-async function connectAndAuth(projectId: string, userId: string): Promise<WebSocket> {
-  const ws = new WebSocket(WS_URL);
+async function connectAndAuth(projectId: string, userId: string, token?: string): Promise<WebSocket> {
+  // 握手阶段通过 query token 鉴权（JWT），与后端 WS 鉴权契约一致。
+  const wsUrl = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+  const ws = new WebSocket(wsUrl);
 
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -118,7 +121,7 @@ describe('WebSocket real-time push + breakpoint end-to-end', () => {
       enableBreakpoints: false,
     });
 
-    const ws = await connectAndAuth(ctx.projectId, ctx.userId);
+    const ws = await connectAndAuth(ctx.projectId, ctx.userId, ctx.token);
     const msgPromise = waitForWsMessage(ws, 'new_trace', 10000);
 
     try {

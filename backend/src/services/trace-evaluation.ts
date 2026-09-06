@@ -1,6 +1,6 @@
 import { callLLM, extractJsonFromLLMResponse } from './llm-client.js';
 import { getSpanTree, SpanTreeNode } from './span.js';
-import { query, queryOne } from '../db/index.js';
+import { fromDbBool, fromDbJson, toDbBool, toDbJson, query, queryOne } from '../db/index.js';
 import { getModelConfigById, getModelConfigsByProject } from './prompts.js';
 
 // ==================== Types ====================
@@ -145,8 +145,8 @@ Please analyze the trajectory and return the evaluation as JSON only.`;
     trace_id: string;
     evaluator: string;
     score: number;
-    passed: number;
-    details: string;
+    passed: unknown;
+    details: unknown;
     created_at: string;
   }>(
     `INSERT INTO trace_eval_results (id, trace_id, evaluator, score, passed, details)
@@ -157,8 +157,8 @@ Please analyze the trajectory and return the evaluation as JSON only.`;
       traceDbId,
       'trajectory_llm_judge',
       overallScore,
-      passed ? 1 : 0,
-      JSON.stringify(details),
+      toDbBool(passed),
+      toDbJson(details),
     ]
   );
 
@@ -169,7 +169,7 @@ Please analyze the trajectory and return the evaluation as JSON only.`;
   // 更新 trace 最新评估分数
   await queryOne(
     `UPDATE traces SET latest_eval_score = $1, latest_eval_passed = $2 WHERE id = $3 RETURNING id`,
-    [overallScore, passed ? 1 : 0, traceDbId]
+    [overallScore, toDbBool(passed), traceDbId]
   );
 
   return {
@@ -177,7 +177,7 @@ Please analyze the trajectory and return the evaluation as JSON only.`;
     trace_id: result.trace_id,
     evaluator: result.evaluator,
     score: result.score,
-    passed: result.passed === 1,
+    passed: fromDbBool(result.passed) ?? false,
     dimensions,
     details,
     created_at: new Date(result.created_at),
@@ -193,8 +193,8 @@ export async function getTraceTrajectoryEvals(traceId: string): Promise<Trajecto
     trace_id: string;
     evaluator: string;
     score: number;
-    passed: number;
-    details: string;
+    passed: unknown;
+    details: unknown;
     created_at: string;
   }>(
     `SELECT * FROM trace_eval_results
@@ -205,8 +205,9 @@ export async function getTraceTrajectoryEvals(traceId: string): Promise<Trajecto
 
   return rows.map(row => {
     let details: Record<string, unknown> = {};
-    if (row.details) {
-      try { details = JSON.parse(row.details); } catch { /* ignore */ }
+    const parsedDetails = fromDbJson(row.details);
+    if (parsedDetails && typeof parsedDetails === 'object') {
+      details = parsedDetails as Record<string, unknown>;
     }
     const dimensions = (details.dimensions as TrajectoryDimension[]) || [];
     return {
@@ -214,7 +215,7 @@ export async function getTraceTrajectoryEvals(traceId: string): Promise<Trajecto
       trace_id: row.trace_id,
       evaluator: row.evaluator,
       score: row.score,
-      passed: row.passed === 1,
+      passed: fromDbBool(row.passed) ?? false,
       dimensions,
       details,
       created_at: new Date(row.created_at),

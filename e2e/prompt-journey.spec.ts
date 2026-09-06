@@ -4,12 +4,13 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 const generateTestEmail = () => `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-const testPassword = 'Test123456!';
+const testPassword = 'Test1234567!';
 
 test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版本对比', () => {
   let testEmail: string;
   let token: string;
   let projectId: string;
+  let promptName: string;
 
   test.beforeAll(async ({ request }) => {
     testEmail = generateTestEmail();
@@ -44,11 +45,12 @@ test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版�
 
   test('Step 2: 通过 API 创建 Prompt 并在页面验证', async ({ page, request }) => {
     // 通过 API 创建 prompt
+    promptName = `E2E System Prompt ${Date.now()}`;
     const promptRes = await request.post(`${API_URL}/api/v1/prompts`, {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         project_id: projectId,
-        name: 'E2E System Prompt',
+        name: promptName,
         description: 'System prompt for E2E testing',
         content: 'You are a helpful assistant. Answer questions concisely.',
         config: { temperature: 0.7 },
@@ -67,7 +69,7 @@ test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版�
     await page.waitForLoadState('networkidle');
 
     // 应该能看到创建的 prompt
-    await expect(page.locator('text=E2E System Prompt')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(promptName, { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
   test('Step 3: 通过 API 创建新版本并在页面验证版本列表', async ({ page, request }) => {
@@ -104,7 +106,7 @@ test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版�
     await page.waitForLoadState('networkidle');
 
     // 应该能看到 prompt
-    await expect(page.locator('text=E2E System Prompt')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(promptName, { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
   test('Step 4: 通过 API 运行 Playground 并在页面验证运行记录', async ({ page, request }) => {
@@ -115,12 +117,19 @@ test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版�
     const prompts = await listRes.json();
     const promptId = Array.isArray(prompts) ? prompts[0]?.id : null;
 
+    const modelConfigRes = await request.post(`${API_URL}/api/v1/model-configs`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { project_id: projectId, name: `Prompt Journey Model ${Date.now()}`, provider: 'openai', model: 'gpt-4', api_key: 'sk-test' },
+    });
+    const modelConfig = await modelConfigRes.json();
+
     // 运行 playground
     const runRes = await request.post(`${API_URL}/api/v1/playground/run`, {
       headers: { Authorization: `Bearer ${token}` },
       data: {
         project_id: projectId,
         prompt_id: promptId,
+        model_config_id: modelConfig.id,
         model: 'gpt-4',
         input: 'What is 2+2?',
         output: '4',
@@ -163,7 +172,14 @@ test.describe('提示工程旅程：Prompt 创建 → Playground 验证 → 版�
     await page.waitForLoadState('networkidle');
     await expect(page.locator('main h1')).toContainText(/Prompt|提示/);
 
-    // 应该能看到之前创建的 prompt
-    await expect(page.locator('text=E2E System Prompt')).toBeVisible({ timeout: 10000 });
+    const promptListRes = await page.request.get(`${API_URL}/api/v1/prompts?project_id=${projectId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const promptList = await promptListRes.json();
+    const createdPrompt = Array.isArray(promptList)
+      ? promptList.find((prompt: { name?: string }) => prompt.name === promptName)
+      : null;
+    expect(createdPrompt).toBeTruthy();
+    await expect(page.getByText(promptName, { exact: true })).toBeVisible({ timeout: 10000 });
   });
 });

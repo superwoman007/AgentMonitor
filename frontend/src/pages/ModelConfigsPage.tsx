@@ -3,6 +3,16 @@ import { Layout } from '../components/Layout';
 import { useTranslation } from '../App';
 import { api, ModelConfig } from '../api';
 import { useProjectStore } from '../stores/projectStore';
+import { MODEL_PROVIDERS, getProviderById } from '../constants/modelProviders';
+
+interface TestResult {
+  configId: string;
+  loading: boolean;
+  success?: boolean;
+  latencyMs?: number;
+  error?: string;
+  responsePreview?: string;
+}
 
 export function ModelConfigsPage() {
   const { t } = useTranslation();
@@ -10,6 +20,7 @@ export function ModelConfigsPage() {
   const [configs, setConfigs] = useState<ModelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [form, setForm] = useState({
     name: '',
     provider: 'openai',
@@ -19,6 +30,8 @@ export function ModelConfigsPage() {
     temperature: '',
     max_tokens: '',
   });
+
+  const provider = getProviderById(form.provider);
 
   const fetchConfigs = useCallback(async () => {
     if (!currentProject) return;
@@ -71,6 +84,37 @@ export function ModelConfigsPage() {
     }
   };
 
+  const handleTestConnection = async (cfg: ModelConfig) => {
+    setTestResults((prev) => ({
+      ...prev,
+      [cfg.id]: { configId: cfg.id, loading: true },
+    }));
+    try {
+      const result = await api.modelConfigs.test(cfg.id);
+      setTestResults((prev) => ({
+        ...prev,
+        [cfg.id]: {
+          configId: cfg.id,
+          loading: false,
+          success: result.success,
+          latencyMs: result.latency_ms,
+          error: result.error,
+          responsePreview: result.response_preview,
+        },
+      }));
+    } catch (e) {
+      setTestResults((prev) => ({
+        ...prev,
+        [cfg.id]: {
+          configId: cfg.id,
+          loading: false,
+          success: false,
+          error: e instanceof Error ? e.message : String(e),
+        },
+      }));
+    }
+  };
+
   const getConfigString = (cfg: Record<string, unknown> | null) => {
     if (!cfg) return '';
     return JSON.stringify(cfg, null, 2);
@@ -102,40 +146,89 @@ export function ModelConfigsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {configs.map((cfg) => (
-          <div key={cfg.id} className="bg-white border rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-medium text-gray-900">{cfg.name}</h3>
-              <button
-                onClick={() => handleDelete(cfg.id)}
-                className="text-xs text-red-600 hover:underline"
-              >
-                {t.delete}
-              </button>
-            </div>
-            <div className="space-y-1 text-xs text-gray-500">
-              <div className="flex items-center gap-2">
-                <span className="inline-block px-2 py-0.5 bg-gray-100 rounded">{cfg.provider}</span>
-                <span>{cfg.model}</span>
+        {configs.map((cfg) => {
+          const testResult = testResults[cfg.id];
+          const providerInfo = getProviderById(cfg.provider);
+          return (
+            <div key={cfg.id} className="bg-white border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-medium text-gray-900">{cfg.name}</h3>
+                <button
+                  onClick={() => handleDelete(cfg.id)}
+                  className="text-xs text-red-600 hover:underline"
+                >
+                  {t.delete}
+                </button>
               </div>
-              {cfg.base_url && (
-                <div className="text-gray-400 truncate" title={cfg.base_url}>
-                  {cfg.base_url}
+              <div className="space-y-1 text-xs text-gray-500">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block px-2 py-0.5 bg-gray-100 rounded">{cfg.provider}</span>
+                  <span>{cfg.model}</span>
                 </div>
+                {cfg.base_url && (
+                  <div className="text-gray-400 truncate" title={cfg.base_url}>
+                    {cfg.base_url}
+                  </div>
+                )}
+                {cfg.api_key && (
+                  <div className="text-gray-400">
+                    API Key: {cfg.api_key.slice(0, 4)}...{cfg.api_key.slice(-4)}
+                  </div>
+                )}
+              </div>
+              {cfg.config && Object.keys(cfg.config).length > 0 && (
+                <pre className="mt-2 text-xs text-gray-400 bg-gray-50 p-2 rounded overflow-auto max-h-24">
+                  {getConfigString(cfg.config)}
+                </pre>
               )}
-              {cfg.api_key && (
-                <div className="text-gray-400">
-                  API Key: {cfg.api_key.slice(0, 4)}...{cfg.api_key.slice(-4)}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => handleTestConnection(cfg)}
+                  disabled={testResult?.loading}
+                  className="px-3 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 disabled:opacity-50"
+                >
+                  {testResult?.loading ? t.testing : t.testConnection}
+                </button>
+                {providerInfo?.docsUrl && (
+                  <a
+                    href={providerInfo.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 text-xs bg-gray-50 text-gray-600 border border-gray-200 rounded hover:bg-gray-100"
+                  >
+                    {t.docs}
+                  </a>
+                )}
+              </div>
+              {testResult && !testResult.loading && (
+                <div
+                  className={`mt-2 text-xs px-2 py-1.5 rounded ${
+                    testResult.success
+                      ? 'bg-green-50 text-green-700 border border-green-200'
+                      : 'bg-red-50 text-red-700 border border-red-200'
+                  }`}
+                >
+                  {testResult.success ? (
+                    <div className="space-y-0.5">
+                      <div>
+                        {t.testSuccess} · {testResult.latencyMs}ms
+                      </div>
+                      {testResult.responsePreview && (
+                        <div className="text-green-600 truncate" title={testResult.responsePreview}>
+                          {t.response}: {testResult.responsePreview}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      {t.testFailed}: {testResult.error}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            {cfg.config && Object.keys(cfg.config).length > 0 && (
-              <pre className="mt-2 text-xs text-gray-400 bg-gray-50 p-2 rounded overflow-auto max-h-24">
-                {getConfigString(cfg.config)}
-              </pre>
-            )}
-          </div>
-        ))}
+          );
+        })}
         {configs.length === 0 && (
           <div className="col-span-full text-center text-gray-500 py-12 border rounded-lg bg-white">
             {t.noModelConfigs}
@@ -164,29 +257,58 @@ export function ModelConfigsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t.provider}</label>
                 <select
                   value={form.provider}
-                  onChange={(e) => setForm({ ...form, provider: e.target.value })}
+                  onChange={(e) => {
+                    const pid = e.target.value;
+                    const p = getProviderById(pid);
+                    setForm({
+                      ...form,
+                      provider: pid,
+                      model: p?.models[0]?.id || '',
+                      base_url: p?.baseUrl || '',
+                    });
+                  }}
                   className="w-full px-3 py-2 border rounded-md text-sm"
                 >
-                  <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="doubao">Doubao</option>
-                  <option value="custom">{t.custom}</option>
+                  {MODEL_PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t.model}</label>
-                <input
-                  type="text"
-                  value={form.model}
-                  onChange={(e) => setForm({ ...form, model: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-md text-sm"
-                  placeholder={t.modelIdExample}
-                  required
-                />
+                {provider && provider.models.length > 0 ? (
+                  <select
+                    value={form.model}
+                    onChange={(e) => setForm({ ...form, model: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
+                    required
+                  >
+                    {provider.models.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={form.model}
+                    onChange={(e) => setForm({ ...form, model: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-md text-sm"
+                    placeholder={t.modelIdExample}
+                    required
+                  />
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t.apiKey}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t.apiKey}
+                  {provider && provider.authType === 'api-key' && (
+                    <span className="ml-1 text-xs text-orange-600">({t.apiKeyHeaderTip})</span>
+                  )}
+                </label>
                 <input
                   type="password"
                   value={form.api_key}

@@ -389,7 +389,7 @@ export function SessionDetailPage() {
                     return (
                       <>
                         {steps.map((step, idx) => (
-                          <div key={idx} className="relative">
+                          <div key={idx} data-testid="react-step" className="relative">
                             {idx > 0 && (
                               <div className="flex justify-center -mt-2 mb-2">
                                 <div className="w-0.5 h-6 bg-gray-300"></div>

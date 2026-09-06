@@ -1,4 +1,4 @@
-import { query, queryOne, run } from '../db/index.js';
+import { query, queryOne, run, toDbJson, fromDbJson, toDbBool, SQL_TRUE, SQL_FALSE } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createSpan } from './span.js';
 
@@ -50,9 +50,16 @@ export interface TraceInput {
 
 export async function createTrace(data: TraceInput): Promise<Trace> {
   const id = uuidv4();
-  const status = data.status ?? (data.error ? 'error' : 'success');
-  // 自动生成 traceId，确保后续双写时 spans 表有对应的 trace_id
+  // Truth Repair-2: Trace 即根 Span。
+  // traceId/spanId 各生成一次（若调用方未传），二者绝不复用同一值；
+  // trace 行与 span 行的 trace_id/span_id 必须完全一致。
   const traceId = data.traceId || uuidv4();
+  const spanId = data.spanId || uuidv4();
+  const parentSpanId = data.parentSpanId || null;
+  const rawStatus = data.status ?? (data.error ? 'error' : 'success');
+  // span 侧状态机使用 ok/error/cancelled/timeout；
+  // 将 SDK 历史上报的 success 归一化为 ok，避免终端状态语义不一致。
+  const spanStatus = rawStatus === 'success' ? 'ok' : rawStatus;
   // 默认使用当前时间作为 startedAt
   const startedAt = data.startedAt || new Date();
 
@@ -70,6 +77,11 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
     }
   }
 
+  // 服务端根据 startedAt/endedAt 计算权威 latencyMs，避免客户端时钟偏差
+  const latencyMs = data.latencyMs ?? (
+    data.endedAt ? (new Date(data.endedAt).getTime() - startedAt.getTime()) : null
+  );
+
   const trace = await queryOne<Trace>(
     `INSERT INTO traces (
       id, project_id, session_id, agent_id, parent_trace_id, trace_type, name,
@@ -85,18 +97,18 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
       data.parentTraceId || null,
       data.traceType,
       data.name,
-      JSON.stringify(data.input || {}),
-      data.output ? JSON.stringify(data.output) : null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
+      toDbJson(data.input || {}),
+      toDbJson(data.output ?? null),
+      toDbJson(data.metadata ?? null),
       traceId,
-      data.spanId || null,
-      data.parentSpanId || null,
+      spanId,
+      parentSpanId,
       data.promptId || null,
       data.promptVersionId || null,
       startedAt.toISOString(),
       data.endedAt ? data.endedAt.toISOString() : null,
-      data.latencyMs ?? null,
-      status,
+      latencyMs,
+      rawStatus,
       data.error || null,
     ]
   );
@@ -105,31 +117,98 @@ export async function createTrace(data: TraceInput): Promise<Trace> {
     throw new Error('Failed to create trace');
   }
 
-  // 双写：将 trace 数据同步写入 spans 表，创建 root span
+  // Truth Repair-2: 根 Span 唯一写入点。
+  // 仅由服务端在 createTrace 内部写入 spans 表，保证一条 Trace 恰好对应一条根 Span，
+  // 且 trace.trace_id/span_id 与 span.trace_id/span_id 完全一致。
+  // 注意：这里依赖 span.ts 的 Upsert 语义，重复上报会合并而非插入新行。
   try {
     await createSpan({
       projectId: data.projectId,
-      spanId: data.spanId || traceId,  // 优先使用传入的 spanId，否则用 traceId
-      traceId: traceId,
-      parentSpanId: data.parentSpanId || null,
+      spanId,
+      traceId,
+      parentSpanId: parentSpanId || undefined,
       name: data.name,
       traceType: data.traceType,
-      startedAt: startedAt,
+      startedAt,
       endedAt: data.endedAt,
-      latencyMs: data.latencyMs,
+      latencyMs: latencyMs ?? undefined,
       input: data.input,
       output: data.output,
       attributes: data.metadata as Record<string, unknown> | undefined,
-      status: data.status,
+      status: spanStatus,
       error: data.error,
-      sessionId: data.sessionId || null,
+      sessionId: sessionId || undefined,
     });
   } catch (e) {
-    // 双写失败不影响 traces 主流程
-    console.warn('[Trace] Dual-write to spans failed:', e);
+    // 根 Span 写入失败不应影响 trace 主流程，但需记录告警便于排查
+    console.warn('[Trace] Failed to write root span:', e);
   }
 
   return trace;
+}
+
+/**
+ * 按外部 traceId 幂等 Upsert 一条 Trace（Telemetry V2 使用）
+ *
+ * 与 createTrace 的区别：V2 协议下 trace.start / trace.end 必须携带外部 traceId，
+ * 同一 traceId 的重复上报应合并到同一条记录，而不是每次插入新行。
+ * 若该 traceId 尚不存在则创建；若已存在则合并终态字段（output/endedAt/latency/status/error）。
+ *
+ * @param data - Trace 输入数据，必须包含 traceId
+ * @returns 返回合并后的 Trace
+ */
+export async function upsertTraceByTraceId(data: TraceInput & { traceId: string }): Promise<Trace> {
+  const existing = await queryOne<Trace>(
+    'SELECT * FROM traces WHERE trace_id = $1 ORDER BY created_at DESC LIMIT 1',
+    [data.traceId]
+  );
+
+  if (existing) {
+    const mergedStatus = data.status ?? existing.status;
+    const updates: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (data.output !== undefined) {
+      updates.push(`output = $${idx++}`);
+      params.push(toDbJson(data.output));
+    }
+    if (data.endedAt) {
+      updates.push(`ended_at = $${idx++}`);
+      params.push(data.endedAt.toISOString());
+    }
+    if (data.endedAt && data.startedAt) {
+      updates.push(`latency_ms = $${idx++}`);
+      params.push(data.endedAt.getTime() - data.startedAt.getTime());
+    }
+    if (mergedStatus) {
+      updates.push(`status = $${idx++}`);
+      params.push(mergedStatus);
+    }
+    if (data.error !== undefined) {
+      updates.push(`error = $${idx++}`);
+      params.push(data.error);
+    }
+    if (data.spanId) {
+      updates.push(`span_id = $${idx++}`);
+      params.push(data.spanId);
+    }
+    if (data.parentSpanId) {
+      updates.push(`parent_span_id = $${idx++}`);
+      params.push(data.parentSpanId);
+    }
+
+    if (updates.length > 0) {
+      params.push(existing.id);
+      await run(`UPDATE traces SET ${updates.join(', ')} WHERE id = $${idx}`, params);
+    }
+
+    const refreshed = await getTraceById(existing.id);
+    if (refreshed) return refreshed;
+    return existing;
+  }
+
+  return createTrace(data);
 }
 
 export async function getTracesByProject(
@@ -208,9 +287,9 @@ export async function getTracesByProject(
   }
 
   if (options?.evalStatus === 'needs_attention') {
-    conditions.push(`(latest_eval_passed = 0 OR status = 'error')`);
+    conditions.push(`(latest_eval_passed = ${SQL_FALSE} OR status = 'error')`);
   } else if (options?.evalStatus === 'passed') {
-    conditions.push(`latest_eval_passed = 1`);
+    conditions.push(`latest_eval_passed = ${SQL_TRUE}`);
   } else if (options?.evalStatus === 'unevaluated') {
     conditions.push(`latest_eval_score IS NULL`);
   }
@@ -284,13 +363,13 @@ export async function updateTrace(traceId: string, data: Partial<TraceInput>): P
   
   if (data.output !== undefined) {
     updates.push(`output = $${paramIndex}`);
-    params.push(JSON.stringify(data.output));
+    params.push(toDbJson(data.output));
     paramIndex++;
   }
   
   if (data.endedAt !== undefined) {
     updates.push(`ended_at = $${paramIndex}`);
-    params.push(data.endedAt);
+    params.push(data.endedAt instanceof Date ? data.endedAt.toISOString() : data.endedAt);
     paramIndex++;
   }
   
@@ -359,7 +438,7 @@ export interface TraceEvalResult {
   trace_id: string;
   evaluator: string | null;
   score: number | null;
-  passed: number | null;
+  passed: unknown;
   details: Record<string, unknown> | null;
   created_at: Date;
 }
@@ -375,17 +454,17 @@ export async function addTraceEvalResult(
     `INSERT INTO trace_eval_results (id, trace_id, evaluator, score, passed, details)
      VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [crypto.randomUUID(), traceId, evaluator, score, passed ? 1 : 0, details ? JSON.stringify(details) : null]
+    [crypto.randomUUID(), traceId, evaluator, score, toDbBool(passed), details ? toDbJson(details) : null]
   );
 
   // Update trace latest eval score
   await run(
     `UPDATE traces SET latest_eval_score = $1, latest_eval_passed = $2 WHERE id = $3`,
-    [score, passed ? 1 : 0, traceId]
+    [score, toDbBool(passed), traceId]
   );
 
-  if (result && typeof result.details === 'string') {
-    try { result.details = JSON.parse(result.details); } catch { result.details = null; }
+  if (result && result.details !== null && typeof result.details !== 'object') {
+    result.details = fromDbJson(result.details) as Record<string, unknown> | null;
   }
   return result!;
 }
@@ -396,8 +475,8 @@ export async function getTraceEvalResults(traceId: string): Promise<TraceEvalRes
     [traceId]
   );
   return rows.map(row => {
-    if (row.details && typeof row.details === 'string') {
-      try { row.details = JSON.parse(row.details); } catch { row.details = null; }
+    if (row.details !== null && typeof row.details !== 'object') {
+      row.details = fromDbJson(row.details) as Record<string, unknown> | null;
     }
     return row;
   });

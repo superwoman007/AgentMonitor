@@ -24,10 +24,10 @@ export function StatsCards({ stats, onCardClick }: StatsCardsProps) {
     return `${value.toFixed(1)}ms`;
   };
 
-  const cards = [
+  const cards: Array<{ label: string; value: string; color: string; icon: string; filter: Record<string, string> }> = [
     { label: t.totalRequests, value: formatNumber(stats?.totalRequests ?? 0), color: 'text-blue-600', icon: '📊', filter: {} },
     { label: t.successful, value: formatNumber(stats?.successfulRequests ?? 0), color: 'text-green-600', icon: '✅', filter: { status: 'success' } },
-    { label: t.successRate, value: formatPercent(stats?.successRate ?? 0), color: 'text-purple-600', icon: '📈', filter: { status: 'error' } },
+    { label: t.successRate, value: formatPercent(stats?.successRate ?? 0), color: 'text-purple-600', icon: '📈', filter: { status: 'success' } },
     { label: t.avgLatency, value: formatLatency(stats?.avgLatency ?? 0), color: 'text-orange-600', icon: '⚡', filter: { latencyMin: String(Math.round(stats?.avgLatency ?? 0)) } },
     { label: t.totalTokens, value: formatNumber(stats?.totalTokens ?? 0), color: 'text-indigo-600', icon: '🔤', filter: {} },
   ];
@@ -53,4 +53,3 @@ export function StatsCards({ stats, onCardClick }: StatsCardsProps) {
     </div>
   );
 }
-

@@ -17,6 +17,12 @@ build/
 frontend/vite.config.d.ts
 frontend/vite.config.js
 
+# SDK 打包产物 (由发布流程生成，不应入库)
+frontend/public/sdks/*.tar.gz
+
+# Claude Code 本地配置 (避免依赖全局 gitignore)
+.claude/
+
 # ========================
 # Environment variables
 # ========================
@@ -124,4 +130,5 @@ plans/
 extract.py
 *.sql
 tmp/*
+backend/src/db/schema.sql
 backend/src/db/schema.sql

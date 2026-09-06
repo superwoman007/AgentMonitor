@@ -3,7 +3,7 @@ import { Decision, DecisionStats } from '../../types/decision';
 import { DecisionTimeline } from './DecisionTimeline';
 import { DecisionStatsCard } from './DecisionStatsCard';
 import { DecisionDetailModal } from './DecisionDetailModal';
-import { useApi } from '../../hooks/useApi';
+import { api } from '../../api';
 import { useTranslation } from '../../App';
 import './DecisionMonitor.css';
 
@@ -28,7 +28,8 @@ export const DecisionMonitor: FC<DecisionMonitorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [enableEnterAnimation, setEnableEnterAnimation] = useState(true);
 
-  const { fetchApi } = useApi();
+  // 请求序号：每次拉取递增，仅采纳最新一次结果，避免快速切换项目/轮询时的竞态覆盖。
+  const fetchSeqRef = useRef(0);
   const pollingRef = useRef<{ stopped: boolean; inFlight: boolean }>({ stopped: false, inFlight: false });
 
   const isSameDecisions = useCallback((prev: Decision[], next: Decision[]) => {
@@ -42,27 +43,32 @@ export const DecisionMonitor: FC<DecisionMonitorProps> = ({
   }, []);
 
   const fetchDecisions = useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       const url = sessionId
         ? `/api/v1/sessions/${sessionId}/decisions`
         : `/api/v1/projects/${projectId}/decisions?limit=100`;
-      
-      const data = await fetchApi(url);
+
+      const data = await api.get<Decision[]>(url);
+      if (seq !== fetchSeqRef.current) return;
       setDecisions((prev) => (Array.isArray(data) && isSameDecisions(prev, data) ? prev : data));
       setError(null);
     } catch (err) {
+      if (seq !== fetchSeqRef.current) return;
       setError(err instanceof Error ? err.message : t.fetchDecisionsFailed);
     }
-  }, [projectId, sessionId, fetchApi, isSameDecisions, t.fetchDecisionsFailed]);
+  }, [projectId, sessionId, isSameDecisions, t.fetchDecisionsFailed]);
 
   const fetchStats = useCallback(async () => {
+    const seq = fetchSeqRef.current;
     try {
-      const data = await fetchApi(`/api/v1/projects/${projectId}/decisions/stats`);
+      const data = await api.get<DecisionStats>(`/api/v1/projects/${projectId}/decisions/stats`);
+      if (seq !== fetchSeqRef.current) return;
       setStats(data);
-    } catch (err) {
-      return;
+    } catch {
+      // 统计失败不阻塞决策时间线展示
     }
-  }, [projectId, fetchApi]);
+  }, [projectId]);
 
   // Expose refresh method to parent via ref
   useEffect(() => {

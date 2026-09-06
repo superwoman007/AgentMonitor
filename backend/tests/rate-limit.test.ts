@@ -1,4 +1,10 @@
 import { FastifyInstance } from 'fastify';
+
+// 在导入 buildApp 之前显式启用限流（与 NODE_ENV 解耦），并使用测试密钥长度
+process.env.RATE_LIMIT_ENABLED = 'true';
+process.env.JWT_SECRET = 'test-secret-key-for-testing-only';
+process.env.NODE_ENV = 'test';
+
 import { buildApp } from '../src/app';
 import supertest from 'supertest';
 

@@ -409,17 +409,29 @@ describe('P1: 采样机制', () => {
       bufferSize: 1,
     });
 
-    // 两个 session 各发 10 条
-    for (let i = 0; i < 10; i++) {
+    // 通过 mock Math.random 让两个 session 的首次采样决策不同：
+    // sess-1 命中采样（返回 0.1 < 0.5），sess-2 未命中（返回 0.9 >= 0.5）
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.1)
+      .mockReturnValueOnce(0.9);
+
+    // 两个 session 各发 1 条触发采样决策缓存
+    await monitor.trace({ sessionId: 'sess-1', traceType: 'llm', name: 'gpt-4', status: 'success' });
+    await monitor.trace({ sessionId: 'sess-2', traceType: 'llm', name: 'gpt-4', status: 'success' });
+
+    // 恢复 Math.random，后续同 session 的 trace 必须复用首次决策，不再调用随机
+    randomSpy.mockRestore();
+
+    // 再给两个 session 各发若干条，验证决策被缓存
+    for (let i = 0; i < 5; i++) {
       await monitor.trace({ sessionId: 'sess-1', traceType: 'llm', name: 'gpt-4', status: 'success' });
       await monitor.trace({ sessionId: 'sess-2', traceType: 'llm', name: 'gpt-4', status: 'success' });
     }
     await monitor.flush();
 
-    // 验证两个 session 的决策独立（虽然不能直接验证内部状态，但可以通过采样分布推断）
-    // 实际场景下，大概率两个 session 至少有一个被采中
+    // sess-1 全部 6 条命中上报；sess-2 全部 0 条被丢弃
     const callCount = globalAny.fetch.mock.calls.length;
-    expect(callCount).toBeGreaterThan(0);
+    expect(callCount).toBe(6);
   });
 
   it('sampleRate=0，全部丢弃（除非 alwaysCapture）', async () => {
@@ -541,7 +553,7 @@ describe('P0-01: Span API', () => {
     const spanEvents = buffer.filter((e: any) => e.type === 'span');
     expect(spanEvents.length).toBe(2);
     expect(spanEvents[1].data.endedAt).toBeDefined();
-    expect(spanEvents[1].data.status).toBe('success');
+    expect(spanEvents[1].data.status).toBe('ok');
   });
 
   it('withSpan 自动管理生命周期（成功场景）', async () => {
@@ -556,7 +568,8 @@ describe('P0-01: Span API', () => {
     const buffer = (m as any).buffer as any[];
     const spanEvents = buffer.filter((e: any) => e.type === 'span');
     expect(spanEvents.length).toBe(2);
-    expect(spanEvents[1].data.status).toBe('success');
+    // V2 协议：成功终态统一为 'ok'
+    expect(spanEvents[1].data.status).toBe('ok');
     expect(spanEvents[1].data.output).toBe(42);
   });
 
@@ -575,7 +588,7 @@ describe('P0-01: Span API', () => {
     expect(spanEvents[1].data.error).toBe('boom');
   });
 
-  it('trace() 双写 span 到 buffer', async () => {
+  it('trace() 不再向 buffer 双写 span，根 Span 由后端统一落库', async () => {
     const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
 
     await m.trace({
@@ -588,28 +601,28 @@ describe('P0-01: Span API', () => {
     const buffer = (m as any).buffer as any[];
     const traceEvents = buffer.filter((e: any) => e.type === 'trace');
     const spanEvents = buffer.filter((e: any) => e.type === 'span');
+    // 一条 trace 调用只产生一个 trace 事件
     expect(traceEvents.length).toBe(1);
-    expect(spanEvents.length).toBe(1);
-    expect(spanEvents[0].data.name).toBe('gpt-4');
+    // 不再双写 span：根 Span 由后端 createTrace 内部写入，避免产生孤儿重复根节点
+    expect(spanEvents.length).toBe(0);
+    // trace 事件必须挂载 traceId/spanId，供后端作为根 Span 的同一组 ID
+    expect(traceEvents[0].data.traceId).toBeTruthy();
+    expect(traceEvents[0].data.spanId).toBeTruthy();
+    expect(traceEvents[0].data.name).toBe('gpt-4');
   });
 
-  it('spanStack 超过 1000 时自动清理', async () => {
+  it('activeSpans 超过阈值时自动清理最早注册的 span', async () => {
     const m = new AgentMonitor({ ...BASE_CONFIG, enableSpanWrite: true });
     (m as any).MAX_SPAN_STACK_SIZE = 5; // 降低阈值方便测试
 
-    // 创建超过阈值的 span
-    const spans: SpanContext[] = [];
+    // 创建超过阈值的 span（不在同一异步链内，每个都是独立根 span）
     for (let i = 0; i < 6; i++) {
-      spans.push(m.startSpan(`span_${i}`));
+      m.startSpan(`span_${i}`);
     }
 
-    // 最早的 span 应该被自动清理
-    const stack = (m as any).spanStack as Map<string, any[]>;
-    let total = 0;
-    for (const s of stack.values()) {
-      total += s.length;
-    }
-    expect(total).toBeLessThanOrEqual(5);
+    // 最早注册的 span 应被自动清理，活跃表总数不超过阈值
+    const active = (m as any).activeSpans as Map<string, SpanContext>;
+    expect(active.size).toBeLessThanOrEqual(5);
   });
 
   it('enableSpanWrite=false 时不生成 span', async () => {
@@ -624,5 +637,75 @@ describe('P0-01: Span API', () => {
     const buffer = (m as any).buffer as any[];
     const spanEvents = buffer.filter((e: any) => e.type === 'span');
     expect(spanEvents.length).toBe(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────
+// PR-03：三语言 Context 与可靠队列 — TS AsyncLocalStorage 契约
+// 验证 100 条并发 trace 不互相串 traceId / parentSpanId
+// ─────────────────────────────────────────────────────────
+describe('PR-03: AsyncLocalStorage 并发隔离契约', () => {
+  it('100 个并发 withSpan 链路各自独立，不出现串 trace / parent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    } as Response);
+    globalAny.fetch = fetchMock;
+
+    const m = new AgentMonitor({
+      ...BASE_CONFIG,
+      flushInterval: 999_999_999,
+      bufferSize: 999_999,
+      enableSpanWrite: true,
+    });
+
+    const CONCURRENCY = 100;
+
+    // 每个并发任务独立启动一条 trace，内部嵌套两层 span，
+    // 最后 flush，抓取 buffer 中所有 span 事件，校验其 traceId/parentSpanId 归属。
+    const tasks = Array.from({ length: CONCURRENCY }, (_, idx) =>
+      m.withSpan(`root-${idx}`, async (rootSpan) => {
+        // 在根 span 内再嵌套一层子 span，确保 parentSpanId 正确
+        const childResult = await m.withSpan(`child-${idx}`, async (childSpan) => {
+          // 触发微调度，强制并发交叉
+          await Promise.resolve();
+          await new Promise((r) => setTimeout(r, 0));
+          return {
+            rootTraceId: rootSpan.traceId,
+            rootSpanId: rootSpan.spanId,
+            childTraceId: childSpan.traceId,
+            childSpanId: childSpan.spanId,
+            childParentSpanId: childSpan.parentSpanId,
+          };
+        });
+        return childResult;
+      })
+    );
+
+    const results = await Promise.all(tasks);
+
+    // 1. 每个并发链路 traceId 必须唯一
+    const traceIds = new Set(results.map((r) => r.rootTraceId));
+    expect(traceIds.size).toBe(CONCURRENCY);
+
+    // 2. 子 span 的 traceId 必须等于自身根 traceId，parentSpanId 必须等于自身根 spanId
+    for (const r of results) {
+      expect(r.childTraceId).toBe(r.rootTraceId);
+      expect(r.childParentSpanId).toBe(r.rootSpanId);
+      expect(r.childSpanId).not.toBe(r.rootSpanId);
+    }
+
+    // 3. buffer 中所有 span 事件的 traceId 必须在已知集合中，不允许跨链路污染
+    const buffer = (m as any).buffer as any[];
+    const spanEvents = buffer.filter((e) => e.type === 'span');
+    // withSpan 会 startSpan + endSpan 各 buffer 一次，100 根 + 100 子 = 400
+    expect(spanEvents.length).toBe(CONCURRENCY * 4);
+    for (const evt of spanEvents) {
+      expect(traceIds.has(evt.data.traceId)).toBe(true);
+    }
+
+    await m.flush();
+    m.close();
   });
 });

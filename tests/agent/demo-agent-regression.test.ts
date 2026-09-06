@@ -28,7 +28,7 @@ describe('Layer 4: Demo Agent 自动化回归', () => {
     const env = {
       ...process.env,
       MONITOR_API_KEY: ctx.apiKey,
-      MONITOR_API_URL: 'http://localhost:3000',
+      MONITOR_API_URL: process.env.API_URL || 'http://localhost:3000',
       NODE_ENV: 'test',
     };
 

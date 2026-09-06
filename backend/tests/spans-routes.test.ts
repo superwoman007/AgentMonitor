@@ -78,7 +78,7 @@ describe('Spans API', () => {
 
   describe('GET /api/traces/:id/tree (span-based)', () => {
     it('should return nested span tree when spans exist', async () => {
-      const traceId = 'trace-tree-route-001';
+      const traceId = `trace-tree-route-${Date.now()}`;
 
       // Create root trace
       const rootRes = await request(app.server)
@@ -95,7 +95,7 @@ describe('Spans API', () => {
         .set('X-API-Key', apiKey)
         .send({
           traceId,
-          spanId: 'span-child-001',
+          spanId: `span-child-${Date.now()}`,
           parentSpanId: null,
           name: 'llm_call',
           traceType: 'llm',
@@ -116,7 +116,7 @@ describe('Spans API', () => {
     });
 
     it('should return new format with spans and stats when spans table has data', async () => {
-      const traceId = 'trace-tree-new-format';
+      const traceId = `trace-tree-new-${Date.now()}`;
 
       // 创建 trace
       const rootRes = await request(app.server)
@@ -133,7 +133,7 @@ describe('Spans API', () => {
         .set('X-API-Key', apiKey)
         .send({
           traceId,
-          spanId: 'span-root-001',
+          spanId: `span-root-${Date.now()}`,
           name: 'agent_run',
           traceType: 'function',
           startedAt: new Date().toISOString(),

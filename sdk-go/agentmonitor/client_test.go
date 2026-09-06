@@ -1,8 +1,10 @@
 package agentmonitor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,9 +85,14 @@ func createMonitor(baseURL string, bufferSize int) *AgentMonitor {
 		BaseURL:       baseURL,
 		BufferSize:    bufferSize,
 		FlushInterval: 1 * time.Hour,
-		SampleRate:    1.0,
+		SampleRate:    floatPtr(1.0),
 	}
 	return Init(config)
+}
+
+// floatPtr 返回 float64 指针，便于在测试中构造 SDKConfig.SampleRate
+func floatPtr(v float64) *float64 {
+	return &v
 }
 
 // 1. Init with defaults
@@ -103,8 +110,12 @@ func TestInitDefaults(t *testing.T) {
 	if config.FlushInterval != 5*time.Second {
 		t.Errorf("FlushInterval default = %v, want 5s", config.FlushInterval)
 	}
-	if config.SampleRate != 1.0 {
-		t.Errorf("SampleRate default = %v, want 1.0", config.SampleRate)
+	if config.SampleRate == nil || *config.SampleRate != 1.0 {
+		rate := "<nil>"
+		if config.SampleRate != nil {
+			rate = fmt.Sprintf("%v", *config.SampleRate)
+		}
+		t.Errorf("SampleRate default = %v, want 1.0", rate)
 	}
 	if len(config.AlwaysCapture) != 2 || config.AlwaysCapture[0] != "error" || config.AlwaysCapture[1] != "breakpoint" {
 		t.Errorf("AlwaysCapture default = %v, want [error breakpoint]", config.AlwaysCapture)
@@ -121,7 +132,7 @@ func TestDisabledMonitor(t *testing.T) {
 		BaseURL:    ts.URL(),
 		Disabled:   true,
 		BufferSize: 1,
-		SampleRate: 1.0,
+		SampleRate: floatPtr(1.0),
 	}
 	monitor := Init(config)
 	defer monitor.Close()
@@ -541,7 +552,7 @@ func TestSamplingRateZeroDrops(t *testing.T) {
 		APIKey:     "proj_key",
 		BaseURL:    ts.URL(),
 		BufferSize: 1,
-		SampleRate: 0,
+		SampleRate: floatPtr(0),
 	}
 	monitor := Init(config)
 	defer monitor.Close()
@@ -564,7 +575,7 @@ func TestSamplingRateOneKeepsAll(t *testing.T) {
 		APIKey:     "proj_key",
 		BaseURL:    ts.URL(),
 		BufferSize: 1,
-		SampleRate: 1.0,
+		SampleRate: floatPtr(1.0),
 	}
 	monitor := Init(config)
 	defer monitor.Close()
@@ -587,7 +598,7 @@ func TestErrorTracesAlwaysCaptured(t *testing.T) {
 		APIKey:     "proj_key",
 		BaseURL:    ts.URL(),
 		BufferSize: 1,
-		SampleRate: 0,
+		SampleRate: floatPtr(0),
 	}
 	monitor := Init(config)
 	defer monitor.Close()
@@ -603,5 +614,84 @@ func TestErrorTracesAlwaysCaptured(t *testing.T) {
 	}
 	if reqs[0].Error != "critical failure" {
 		t.Errorf("Error = %q, want critical failure", reqs[0].Error)
+	}
+}
+
+type spanConcurrencyResult struct {
+	rootTraceID       string
+	rootSpanID        string
+	childTraceID      string
+	childSpanID       string
+	childParentSpanID string
+}
+
+// TestContextIsolates100ConcurrentGoroutines 验证 100 个 goroutine 并发嵌套 Span 时，
+// traceId 与 parentSpanId 通过 context.Context 正确传播，不出现跨链路串扰。
+func TestContextIsolates100ConcurrentGoroutines(t *testing.T) {
+	monitor := createMonitor("http://localhost:3000", 1000)
+	defer monitor.Close()
+
+	const concurrency = 100
+	results := make([]spanConcurrencyResult, concurrency)
+	errCh := make(chan error, concurrency)
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			ctx, root := monitor.StartSpanContext(
+				context.Background(),
+				fmt.Sprintf("root-%d", i),
+				fmt.Sprintf("trace-root-%d", i),
+			)
+			childCtx, child := monitor.StartSpanContext(ctx, fmt.Sprintf("child-%d", i))
+			_ = childCtx
+			monitor.EndSpan(child, "ok", map[string]int{"index": i}, "")
+			monitor.EndSpan(root, "ok", map[string]int{"index": i}, "")
+
+			if child.ParentSpanID != root.SpanID || child.TraceID != root.TraceID {
+				errCh <- fmt.Errorf("span parent mismatch: rootTrace=%s childTrace=%s rootSpan=%s childParent=%s",
+					root.TraceID, child.TraceID, root.SpanID, child.ParentSpanID)
+				return
+			}
+			results[i] = spanConcurrencyResult{
+				rootTraceID:       root.TraceID,
+				rootSpanID:        root.SpanID,
+				childTraceID:      child.TraceID,
+				childSpanID:       child.SpanID,
+				childParentSpanID: child.ParentSpanID,
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	traceIDs := make(map[string]struct{}, concurrency)
+	for _, result := range results {
+		if result.rootTraceID == "" || result.rootSpanID == "" || result.childSpanID == "" {
+			t.Fatalf("unexpected empty span identifiers: %+v", result)
+		}
+		if result.childTraceID != result.rootTraceID {
+			t.Fatalf("child trace %q does not match root trace %q", result.childTraceID, result.rootTraceID)
+		}
+		if result.childParentSpanID != result.rootSpanID {
+			t.Fatalf("child parent %q does not match root span %q", result.childParentSpanID, result.rootSpanID)
+		}
+		if result.childSpanID == result.rootSpanID {
+			t.Fatalf("child span ID equals root span ID: %q", result.childSpanID)
+		}
+		traceIDs[result.rootTraceID] = struct{}{}
+	}
+
+	if len(traceIDs) != concurrency {
+		t.Fatalf("expected %d unique trace IDs, got %d", concurrency, len(traceIDs))
 	}
 }

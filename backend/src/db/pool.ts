@@ -3,25 +3,28 @@ import { config } from '../config.js';
 
 const { Pool } = pg;
 
+// 连接池参数统一来自 config（可由 DB_POOL_MAX / DB_POOL_IDLE_TIMEOUT 环境变量覆盖），
+// 避免此前写死 max=20 导致环境变量不生效。
 function getPoolConfig(): pg.PoolConfig {
+  const poolConfig = {
+    max: config.database.poolMax,
+    idleTimeoutMillis: config.database.poolIdleTimeout,
+    connectionTimeoutMillis: 5000,
+  };
   if (config.database.url) {
     return {
       connectionString: config.database.url,
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      ...poolConfig,
     };
   }
-  
+
   return {
     host: config.database.host,
     port: config.database.port,
     user: config.database.user,
     password: config.database.password,
     database: config.database.database,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    ...poolConfig,
   };
 }
 

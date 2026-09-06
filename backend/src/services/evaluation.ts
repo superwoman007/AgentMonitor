@@ -1,4 +1,4 @@
-import { query, queryOne, run } from '../db/index.js';
+import { fromDbBool, fromDbJson, toDbBool, toDbJson, query, queryOne, run } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 
@@ -46,10 +46,17 @@ export interface EvaluationExperiment {
   name: string;
   description: string | null;
   dataset_id: string;
+  dataset_version_id: string | null;
+  target_version_id: string | null;
+  evaluator_suite_version_id: string | null;
+  lifecycle_status: 'draft' | 'ready' | 'archived';
+  default_run_config: Record<string, unknown> | null;
+  default_gate_config: Record<string, unknown> | null;
   model_config: Record<string, unknown> | null;
   prompt_id: string | null;
   prompt_version_id: string | null;
   target_model_config_id: string | null;
+  evaluator_id: string | null;
   run_config: Record<string, unknown> | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
   results_summary: Record<string, unknown> | null;
@@ -66,11 +73,11 @@ export interface EvaluationResult {
   evaluator_id: string | null;
   output: string | null;
   score: number | null;
-  passed: number;
+  passed: number | boolean;
   details: Record<string, unknown> | null;
   latency_ms: number | null;
   calibrated_score: number | null;
-  calibrated_passed: number | null;
+  calibrated_passed: number | boolean | null;
   calibration_note: string | null;
   calibrated_at: string | null;
   calibrated_by: string | null;
@@ -309,7 +316,7 @@ export async function createEvaluator(
 ): Promise<Evaluator> {
   const evaluatorId = uuidv4();
 
-  let evaluator = await queryOne<Evaluator>(
+  const evaluator = await queryOne<Evaluator>(
     `INSERT INTO evaluators (id, project_id, name, description, type, config, model_config_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
@@ -415,6 +422,14 @@ export async function deleteEvaluator(evaluatorId: string): Promise<boolean> {
 
 // ==================== Evaluation Experiments ====================
 
+export interface CreateExperimentV2Options {
+  datasetVersionId?: string;
+  targetVersionId?: string;
+  evaluatorSuiteVersionId?: string;
+  defaultRunConfig?: Record<string, unknown>;
+  defaultGateConfig?: Record<string, unknown>;
+}
+
 export async function createExperiment(
   projectId: string,
   name: string,
@@ -424,16 +439,24 @@ export async function createExperiment(
   promptId?: string,
   promptVersionId?: string,
   targetModelConfigId?: string,
-  runConfig?: Record<string, unknown>
+  runConfig?: Record<string, unknown>,
+  evaluatorId?: string,
+  v2Options?: CreateExperimentV2Options
 ): Promise<EvaluationExperiment> {
   const experimentId = uuidv4();
+  const lifecycleStatus =
+    v2Options?.datasetVersionId && v2Options?.targetVersionId && v2Options?.evaluatorSuiteVersionId
+      ? 'ready'
+      : 'draft';
 
   const experiment = await queryOne<EvaluationExperiment>(
     `INSERT INTO evaluation_experiments (
        id, project_id, name, description, dataset_id, model_config,
-       prompt_id, prompt_version_id, target_model_config_id, run_config
+       prompt_id, prompt_version_id, target_model_config_id, run_config, evaluator_id,
+       dataset_version_id, target_version_id, evaluator_suite_version_id,
+       lifecycle_status, default_run_config, default_gate_config
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       experimentId, projectId, name, description || null, datasetId,
@@ -442,6 +465,13 @@ export async function createExperiment(
       promptVersionId || null,
       targetModelConfigId || null,
       runConfig ? JSON.stringify(runConfig) : null,
+      evaluatorId || null,
+      v2Options?.datasetVersionId ?? null,
+      v2Options?.targetVersionId ?? null,
+      v2Options?.evaluatorSuiteVersionId ?? null,
+      lifecycleStatus,
+      v2Options?.defaultRunConfig ? JSON.stringify(v2Options.defaultRunConfig) : null,
+      v2Options?.defaultGateConfig ? JSON.stringify(v2Options.defaultGateConfig) : null,
     ]
   );
 
@@ -458,6 +488,16 @@ export async function getExperimentById(experimentId: string): Promise<Evaluatio
     if (typeof row.model_config === 'string') row.model_config = JSON.parse(row.model_config);
     if (typeof row.results_summary === 'string') row.results_summary = JSON.parse(row.results_summary);
     if (typeof row.run_config === 'string') row.run_config = JSON.parse(row.run_config);
+    if (typeof (row as unknown as { default_run_config?: unknown }).default_run_config === 'string') {
+      (row as unknown as { default_run_config: unknown }).default_run_config = JSON.parse(
+        (row as unknown as { default_run_config: string }).default_run_config
+      );
+    }
+    if (typeof (row as unknown as { default_gate_config?: unknown }).default_gate_config === 'string') {
+      (row as unknown as { default_gate_config: unknown }).default_gate_config = JSON.parse(
+        (row as unknown as { default_gate_config: string }).default_gate_config
+      );
+    }
   }
   return row;
 }
@@ -541,8 +581,8 @@ export async function createResult(
       data.evaluator_id || null,
       data.output || null,
       data.score !== undefined ? data.score : null,
-      data.passed ? 1 : 0,
-      data.details ? JSON.stringify(data.details) : null,
+      toDbBool(data.passed ?? false),
+      data.details ? toDbJson(data.details) : null,
       data.latency_ms !== undefined ? data.latency_ms : null,
     ]
   );
@@ -624,6 +664,13 @@ export async function commitDatasetVersion(
 
   if (!version) throw new Error('Failed to create dataset version');
 
+  // PR-07：同步写入逐样本快照，供 Run/基线对比按 caseKey 稳定对齐
+  const { buildSnapshotFromWorkingCopy, createDatasetVersionItems } = await import(
+    './dataset-version-item.js'
+  );
+  const { items: snapshotInputs } = await buildSnapshotFromWorkingCopy(datasetId);
+  await createDatasetVersionItems(versionId, snapshotInputs);
+
   // Update dataset current_version_id
   await run(
     `UPDATE datasets SET current_version_id = $1 WHERE id = $2`,
@@ -632,8 +679,8 @@ export async function commitDatasetVersion(
 
   return {
     ...version,
-    column_schema: version.column_schema ? JSON.parse(version.column_schema as string) : null,
-    item_data: JSON.parse(version.item_data as string),
+    column_schema: version.column_schema ? fromDbJson(version.column_schema) : null,
+    item_data: fromDbJson(version.item_data),
   };
 }
 
@@ -644,8 +691,8 @@ export async function getDatasetVersions(datasetId: string): Promise<DatasetVers
   );
   return rows.map(row => ({
     ...row,
-    column_schema: row.column_schema ? JSON.parse(row.column_schema as string) : null,
-    item_data: JSON.parse(row.item_data as string),
+    column_schema: row.column_schema ? fromDbJson(row.column_schema) : null,
+    item_data: fromDbJson(row.item_data),
   }));
 }
 
@@ -656,7 +703,7 @@ export async function rollbackDatasetVersion(datasetId: string, versionId: strin
   );
   if (!version) return { success: false, message: 'Version not found' };
 
-  const items = JSON.parse(version.item_data as string) as DatasetItem[];
+  const items = (fromDbJson(version.item_data) as DatasetItem[] | null) ?? [];
 
   // Clear current items
   await run('DELETE FROM dataset_items WHERE dataset_id = $1', [datasetId]);
@@ -821,6 +868,18 @@ export async function getEvaluatorVersions(evaluatorId: string): Promise<Evaluat
   }));
 }
 
+export async function getEvaluatorVersionById(versionId: string): Promise<EvaluatorVersion | null> {
+  const row = await queryOne<EvaluatorVersion>(
+    `SELECT * FROM evaluator_versions WHERE id = $1`,
+    [versionId]
+  );
+  if (!row) return null;
+  return {
+    ...row,
+    config: typeof row.config === 'string' ? JSON.parse(row.config) : row.config,
+  };
+}
+
 export async function rollbackEvaluatorVersion(evaluatorId: string, versionId: string): Promise<Evaluator | null> {
   const version = await queryOne<EvaluatorVersion>(
     'SELECT * FROM evaluator_versions WHERE id = $1 AND evaluator_id = $2',
@@ -976,7 +1035,7 @@ export async function calibrateResult(
      RETURNING *`,
     [
       data.calibrated_score,
-      data.calibrated_passed ? 1 : 0,
+      toDbBool(Boolean(data.calibrated_passed)),
       data.calibration_note || null,
       new Date().toISOString(),
       data.calibrated_by || null,
@@ -984,8 +1043,8 @@ export async function calibrateResult(
     ]
   );
   if (row) {
-    row.calibrated_passed = (row.calibrated_passed as unknown as number) === 1;
-    row.passed = (row.passed as unknown as number) === 1;
+    row.calibrated_passed = fromDbBool(row.calibrated_passed) ?? false;
+    row.passed = fromDbBool(row.passed) ?? false;
   }
   return row || null;
 }
@@ -1023,10 +1082,10 @@ export async function createAutoEvalTask(
     `INSERT INTO auto_eval_tasks (id, project_id, name, dataset_id, evaluator_id, interval_hours, sample_count, trace_type_filter, enabled, next_run_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [taskId, projectId, name, datasetId, evaluatorId || null, intervalHours, sampleCount, traceTypeFilter || null, enabled ? 1 : 0, new Date().toISOString()]
+    [taskId, projectId, name, datasetId, evaluatorId || null, intervalHours, sampleCount, traceTypeFilter || null, toDbBool(enabled), new Date().toISOString()]
   );
   if (!task) throw new Error('Failed to create auto eval task');
-  (task as unknown as Record<string, unknown>).enabled = (task.enabled as unknown as number) === 1;
+  (task as unknown as Record<string, unknown>).enabled = fromDbBool(task.enabled) ?? false;
   return task;
 }
 
@@ -1053,7 +1112,7 @@ export async function updateAutoEvalTask(
   if (data.interval_hours !== undefined) { updates.push(`interval_hours = $${paramIndex}`); params.push(data.interval_hours); paramIndex++; }
   if (data.sample_count !== undefined) { updates.push(`sample_count = $${paramIndex}`); params.push(data.sample_count); paramIndex++; }
   if (data.trace_type_filter !== undefined) { updates.push(`trace_type_filter = $${paramIndex}`); params.push(data.trace_type_filter); paramIndex++; }
-  if (data.enabled !== undefined) { updates.push(`enabled = $${paramIndex}`); params.push(data.enabled ? 1 : 0); paramIndex++; }
+  if (data.enabled !== undefined) { updates.push(`enabled = $${paramIndex}`); params.push(toDbBool(data.enabled)); paramIndex++; }
 
   if (updates.length === 0) return getAutoEvalTaskById(taskId);
 

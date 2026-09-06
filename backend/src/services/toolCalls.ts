@@ -1,5 +1,9 @@
-import { query, queryOne, run } from '../db/index.js';
+import { query, queryOne, run, toDbJson, fromDbJson } from '../db/index.js';
+import { config } from '../config.js';
 import { v4 as uuidv4 } from 'uuid';
+
+// PG schema 工具调用输入列名为 input_params（SQLite 历史表为 input）
+const INPUT_COL = config.dbType === 'postgres' ? 'input_params' : 'input';
 
 export interface ToolCall {
   id: string;
@@ -25,56 +29,72 @@ export interface ToolCallInput {
 
 export async function createToolCall(data: ToolCallInput): Promise<ToolCall> {
   const id = uuidv4();
-  
+
   await run(
     `INSERT INTO tool_calls (
-      id, session_id, message_id, tool_name, input, output, status, started_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      id,
-      data.sessionId,
-      data.messageId || null,
-      data.toolName,
-      data.input ? JSON.stringify(data.input) : null,
-      data.output ? JSON.stringify(data.output) : null,
-      data.status || 'pending',
-      new Date().toISOString(),
-    ]
+      id, session_id, message_id, tool_name, ${INPUT_COL}, output${config.dbType === 'sqlite' ? ', status' : ''}, started_at
+    ) VALUES ($1, $2, $3, $4, $5, $6${config.dbType === 'sqlite' ? ', $7' : ''}, $${config.dbType === 'sqlite' ? '8' : '7'})`,
+    config.dbType === 'sqlite'
+      ? [
+          id,
+          data.sessionId,
+          data.messageId || null,
+          data.toolName,
+          toDbJson(data.input ?? null),
+          toDbJson(data.output ?? null),
+          data.status || 'pending',
+          new Date().toISOString(),
+        ]
+      : [
+          id,
+          data.sessionId,
+          data.messageId || null,
+          data.toolName,
+          toDbJson(data.input ?? null),
+          toDbJson(data.output ?? null),
+          new Date().toISOString(),
+        ]
   );
-  
-  const toolCall = await queryOne<ToolCall>('SELECT * FROM tool_calls WHERE id = $1', [id]);
+
+  const toolCall = await queryOne<ToolCall>(`SELECT *${config.dbType === 'postgres' ? `, ${INPUT_COL} AS input` : ''} FROM tool_calls WHERE id = $1`, [id]);
   if (!toolCall) {
     throw new Error('Failed to create tool call');
   }
-  
+
+  const created = toolCall as unknown as Record<string, unknown>;
   return {
     ...toolCall,
-    input: toolCall.input ? JSON.parse(toolCall.input as string) : null,
-    output: toolCall.output ? JSON.parse(toolCall.output as string) : null,
+    input: fromDbJson(created.input),
+    output: fromDbJson(toolCall.output),
   } as ToolCall;
 }
 
 export async function getToolCallsBySession(sessionId: string): Promise<ToolCall[]> {
   const toolCalls = await query<ToolCall>(
-    'SELECT * FROM tool_calls WHERE session_id = $1 ORDER BY started_at ASC',
+    `SELECT *${config.dbType === 'postgres' ? `, ${INPUT_COL} AS input` : ''} FROM tool_calls WHERE session_id = $1 ORDER BY started_at ASC`,
     [sessionId]
   );
-  
-  return toolCalls.map(tc => ({
-    ...tc,
-    input: tc.input ? JSON.parse(tc.input as string) : null,
-    output: tc.output ? JSON.parse(tc.output as string) : null,
-  })) as ToolCall[];
+
+  return toolCalls.map(tc => {
+    const row = tc as unknown as Record<string, unknown>;
+    return {
+      ...tc,
+      input: fromDbJson(row.input),
+      output: fromDbJson(tc.output),
+      status: (row.status as string | undefined) ?? 'completed',
+    };
+  }) as ToolCall[];
 }
 
 export async function getToolCallById(toolCallId: string): Promise<ToolCall | null> {
-  const toolCall = await queryOne<ToolCall>('SELECT * FROM tool_calls WHERE id = $1', [toolCallId]);
+  const toolCall = await queryOne<ToolCall>(`SELECT *${config.dbType === 'postgres' ? `, ${INPUT_COL} AS input` : ''} FROM tool_calls WHERE id = $1`, [toolCallId]);
   if (!toolCall) return null;
-  
+
+  const row = toolCall as unknown as Record<string, unknown>;
   return {
     ...toolCall,
-    input: toolCall.input ? JSON.parse(toolCall.input as string) : null,
-    output: toolCall.output ? JSON.parse(toolCall.output as string) : null,
+    input: fromDbJson(row.input),
+    output: fromDbJson(toolCall.output),
   } as ToolCall;
 }
 
@@ -92,11 +112,11 @@ export async function updateToolCall(
   
   if (data.output !== undefined) {
     updates.push(`output = $${paramIndex}`);
-    params.push(JSON.stringify(data.output));
+    params.push(toDbJson(data.output));
     paramIndex++;
   }
   
-  if (data.status !== undefined) {
+  if (data.status !== undefined && config.dbType === 'sqlite') {
     updates.push(`status = $${paramIndex}`);
     params.push(data.status);
     paramIndex++;

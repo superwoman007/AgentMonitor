@@ -57,53 +57,180 @@ export interface SpanTreeNode {
   children: SpanTreeNode[];
 }
 
+const TERMINAL_STATUSES = new Set(['ok', 'error', 'cancelled', 'timeout']);
+
+function isTerminalStatus(status: string | null | undefined): boolean {
+  return !!status && TERMINAL_STATUSES.has(status);
+}
+
+function mergeJsonField(existing: unknown, incoming: unknown): unknown {
+  if (incoming === null || incoming === undefined) return existing;
+  if (existing === null || existing === undefined) return incoming;
+  if (typeof existing === 'object' && typeof incoming === 'object' && !Array.isArray(existing) && !Array.isArray(incoming)) {
+    return { ...(existing as Record<string, unknown>), ...(incoming as Record<string, unknown>) };
+  }
+  return incoming;
+}
+
+function mergeSpanData(existing: Span, incoming: SpanInput): SpanInput {
+  const existingStartedAt = existing.started_at instanceof Date ? existing.started_at : new Date(existing.started_at as unknown as string);
+  const incomingStartedAt = incoming.startedAt;
+  const mergedStartedAt = incomingStartedAt < existingStartedAt ? incomingStartedAt : existingStartedAt;
+
+  let mergedEndedAt: Date | undefined;
+  if (existing.ended_at && incoming.endedAt) {
+    const existingEnded = existing.ended_at instanceof Date ? existing.ended_at : new Date(existing.ended_at as unknown as string);
+    mergedEndedAt = incoming.endedAt > existingEnded ? incoming.endedAt : existingEnded;
+  } else if (incoming.endedAt) {
+    mergedEndedAt = incoming.endedAt;
+  } else if (existing.ended_at) {
+    mergedEndedAt = existing.ended_at instanceof Date ? existing.ended_at : new Date(existing.ended_at as unknown as string);
+  }
+
+  let mergedLatencyMs: number | undefined;
+  if (mergedStartedAt && mergedEndedAt) {
+    mergedLatencyMs = mergedEndedAt.getTime() - mergedStartedAt.getTime();
+  } else {
+    mergedLatencyMs = incoming.latencyMs ?? existing.latency_ms ?? undefined;
+  }
+
+  const existingStatus = existing.status || 'unset';
+  const incomingStatus = incoming.status || 'unset';
+  let mergedStatus: string;
+  if (isTerminalStatus(existingStatus) && !isTerminalStatus(incomingStatus)) {
+    mergedStatus = existingStatus;
+  } else if (isTerminalStatus(incomingStatus)) {
+    mergedStatus = incomingStatus;
+  } else {
+    mergedStatus = incomingStatus !== 'unset' ? incomingStatus : existingStatus;
+  }
+
+  const existingInput = parseJsonField(existing.input);
+  const existingOutput = parseJsonField(existing.output);
+  const existingAttributes = parseJsonField(existing.attributes);
+
+  const mergedInput = mergeJsonField(existingInput, incoming.input ?? null);
+  const mergedOutput = mergeJsonField(existingOutput, incoming.output ?? null);
+  const mergedAttributes = mergeJsonField(existingAttributes, incoming.attributes ?? null);
+  const mergedError = incoming.error || existing.error || null;
+  const mergedParentSpanId = incoming.parentSpanId || existing.parent_span_id || null;
+  const mergedSessionId = incoming.sessionId || existing.session_id || null;
+
+  return {
+    spanId: incoming.spanId,
+    traceId: incoming.traceId,
+    parentSpanId: mergedParentSpanId,
+    name: incoming.name || existing.name,
+    traceType: incoming.traceType || existing.trace_type,
+    startedAt: mergedStartedAt,
+    endedAt: mergedEndedAt,
+    latencyMs: mergedLatencyMs,
+    input: mergedInput,
+    output: mergedOutput,
+    attributes: mergedAttributes as Record<string, unknown> | undefined,
+    status: mergedStatus,
+    error: mergedError || undefined,
+    projectId: incoming.projectId,
+    sessionId: mergedSessionId || undefined,
+  };
+}
+
 export async function createSpan(data: SpanInput): Promise<Span> {
-  const safeInput = data.input ? sanitizeData(data.input) : null;
-  const safeOutput = data.output ? sanitizeData(data.output) : null;
-  const safeAttributes = data.attributes ? sanitizeData(data.attributes) : null;
+  // spans.span_id 为全局主键（W3C 风格全局唯一 ID），存在性判断只按 span_id；
+  // 不能附带 project_id 条件，否则跨项目复用同一 spanId（或测试固定 ID）时
+  // 会 SELECT 未命中而 INSERT 触发主键冲突。
+  const existing = await queryOne<Span>(
+    'SELECT * FROM spans WHERE span_id = $1',
+    [data.spanId]
+  );
 
-  const truncatedInput = safeInput ? truncateJson(safeInput, 512 * 1024, 'input') : null;
-  const truncatedOutput = safeOutput ? truncateJson(safeOutput, 512 * 1024, 'output') : null;
+  if (existing) {
+    const merged = mergeSpanData(existing, data);
+    const safeInput = merged.input ? sanitizeData(merged.input) : null;
+    const safeOutput = merged.output ? sanitizeData(merged.output) : null;
+    const safeAttributes = merged.attributes ? sanitizeData(merged.attributes) : null;
+    const truncatedInput = safeInput ? truncateJson(safeInput, 512 * 1024, 'input') : null;
+    const truncatedOutput = safeOutput ? truncateJson(safeOutput, 512 * 1024, 'output') : null;
 
-  // 使用 INSERT OR IGNORE / ON CONFLICT 实现幂等插入，避免双写时 UNIQUE 约束冲突
-  const insertSql = config.dbType === 'sqlite'
-    ? `INSERT OR IGNORE INTO spans (
-        span_id, trace_id, parent_span_id, name, trace_type,
-        started_at, ended_at, latency_ms, input, output, attributes,
-        status, error, project_id, session_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
-    : `INSERT INTO spans (
-        span_id, trace_id, parent_span_id, name, trace_type,
-        started_at, ended_at, latency_ms, input, output, attributes,
-        status, error, project_id, session_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      ON CONFLICT (span_id) DO NOTHING`;
+    await run(
+      `UPDATE spans SET
+        parent_span_id = $1,
+        name = $2,
+        trace_type = $3,
+        started_at = $4,
+        ended_at = $5,
+        latency_ms = $6,
+        input = $7,
+        output = $8,
+        attributes = $9,
+        status = $10,
+        error = $11,
+        session_id = $12
+      WHERE span_id = $13`,
+      [
+        merged.parentSpanId || null,
+        merged.name,
+        merged.traceType,
+        merged.startedAt.toISOString(),
+        merged.endedAt ? merged.endedAt.toISOString() : null,
+        merged.latencyMs ?? null,
+        truncatedInput ? JSON.stringify(truncatedInput) : null,
+        truncatedOutput ? JSON.stringify(truncatedOutput) : null,
+        safeAttributes ? JSON.stringify(safeAttributes) : null,
+        merged.status,
+        merged.error || null,
+        merged.sessionId || null,
+        data.spanId,
+      ]
+    );
+  } else {
+    const safeInput = data.input ? sanitizeData(data.input) : null;
+    const safeOutput = data.output ? sanitizeData(data.output) : null;
+    const safeAttributes = data.attributes ? sanitizeData(data.attributes) : null;
+    const truncatedInput = safeInput ? truncateJson(safeInput, 512 * 1024, 'input') : null;
+    const truncatedOutput = safeOutput ? truncateJson(safeOutput, 512 * 1024, 'output') : null;
 
-  await run(insertSql, [
-    data.spanId,
-    data.traceId,
-    data.parentSpanId || null,
-    data.name,
-    data.traceType,
-    data.startedAt.toISOString(),
-    data.endedAt ? data.endedAt.toISOString() : null,
-    data.latencyMs ?? null,
-    truncatedInput ? JSON.stringify(truncatedInput) : null,
-    truncatedOutput ? JSON.stringify(truncatedOutput) : null,
-    safeAttributes ? JSON.stringify(safeAttributes) : null,
-    data.status || 'unset',
-    data.error || null,
-    data.projectId,
-    data.sessionId || null,
-  ]);
+    const latencyMs = data.latencyMs ?? (data.startedAt && data.endedAt
+      ? data.endedAt.getTime() - data.startedAt.getTime()
+      : null);
 
-  // 查询返回已插入或已存在的 span 记录
+    const insertSql = config.dbType === 'sqlite'
+      ? `INSERT INTO spans (
+          span_id, trace_id, parent_span_id, name, trace_type,
+          started_at, ended_at, latency_ms, input, output, attributes,
+          status, error, project_id, session_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+      : `INSERT INTO spans (
+          span_id, trace_id, parent_span_id, name, trace_type,
+          started_at, ended_at, latency_ms, input, output, attributes,
+          status, error, project_id, session_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`;
+
+    await run(insertSql, [
+      data.spanId,
+      data.traceId,
+      data.parentSpanId || null,
+      data.name,
+      data.traceType,
+      data.startedAt.toISOString(),
+      data.endedAt ? data.endedAt.toISOString() : null,
+      latencyMs,
+      truncatedInput ? JSON.stringify(truncatedInput) : null,
+      truncatedOutput ? JSON.stringify(truncatedOutput) : null,
+      safeAttributes ? JSON.stringify(safeAttributes) : null,
+      data.status || 'unset',
+      data.error || null,
+      data.projectId,
+      data.sessionId || null,
+    ]);
+  }
+
   const span = await queryOne<Span>(
     'SELECT * FROM spans WHERE span_id = $1',
     [data.spanId]
   );
 
-  if (!span) throw new Error('Failed to create span');
+  if (!span) throw new Error('Failed to upsert span');
 
   return deserializeSpan(span);
 }
@@ -214,9 +341,12 @@ function detectCycles(spans: Span[]): Set<string> {
 function extractTokens(attrs: unknown): { prompt?: number; completion?: number; total?: number } | null {
   if (!attrs || typeof attrs !== 'object') return null;
   const a = attrs as Record<string, unknown>;
-  const prompt = a.tokens_prompt ?? a.prompt_tokens ?? a.tokens?.prompt;
-  const completion = a.tokens_completion ?? a.completion_tokens ?? a.tokens?.completion;
-  const total = a.tokens_total ?? a.total_tokens ?? a.tokens?.total;
+  const nestedTokens = a.tokens && typeof a.tokens === 'object'
+    ? a.tokens as Record<string, unknown>
+    : {};
+  const prompt = a.tokens_prompt ?? a.prompt_tokens ?? nestedTokens.prompt;
+  const completion = a.tokens_completion ?? a.completion_tokens ?? nestedTokens.completion;
+  const total = a.tokens_total ?? a.total_tokens ?? nestedTokens.total;
   if (prompt === undefined && completion === undefined && total === undefined) return null;
   return {
     prompt: typeof prompt === 'number' ? prompt : undefined,

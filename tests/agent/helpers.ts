@@ -17,7 +17,7 @@ export async function registerTestUser(): Promise<{ token: string; userId: strin
   const res = await fetch(`${API_URL}/api/v1/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: 'Test123456!', name: 'Layer4 Test' }),
+    body: JSON.stringify({ email, password: 'Test12345678!', name: 'Layer4 Test' }),
   });
 
   if (!res.ok) {

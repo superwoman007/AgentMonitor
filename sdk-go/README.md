@@ -115,9 +115,10 @@ monitor.TrackMessage(agentmonitor.MessageData{
 
 ```go
 // 采样 10%，但错误和断点总是上报
+rate := 0.1
 monitor := agentmonitor.Init(&agentmonitor.SDKConfig{
 	APIKey:        "...",
-	SampleRate:    0.1, // 10% 采样率
+	SampleRate:    &rate, // 10% 采样率（指针类型；nil 表示默认全量 1.0，0 表示全丢弃）
 	AlwaysCapture: []string{"error", "breakpoint"}, // 强制上报
 })
 ```
@@ -158,6 +159,7 @@ wg.Wait()
 ## 配置选项
 
 ```go
+fullRate := 1.0
 &agentmonitor.SDKConfig{
 	APIKey:            "required",              // 必填：API Key
 	BaseURL:           "http://localhost:3000", // 后端地址
@@ -165,7 +167,7 @@ wg.Wait()
 	BufferSize:        100,                     // 缓冲区大小
 	FlushInterval:     5 * time.Second,         // 刷新间隔
 	EnableBreakpoints: true,                    // 是否启用断点
-	SampleRate:        1.0,                     // 采样率 0-1
+	SampleRate:        &fullRate,               // 采样率指针 0-1（nil 默认 1.0；0 表示全丢弃）
 	AlwaysCapture:     []string{"error", "breakpoint"}, // 强制上报类型
 }
 ```
@@ -177,11 +179,12 @@ wg.Wait()
 ```go
 import "os"
 
+prodRate := 0.1
 monitor := agentmonitor.Init(&agentmonitor.SDKConfig{
 	APIKey:            os.Getenv("AGENTMONITOR_API_KEY"),
 	BaseURL:           getEnvOrDefault("AGENTMONITOR_URL", "https://api.agentmonitor.dev"),
-	EnableBreakpoints: false, // 生产环境关闭断点
-	SampleRate:        0.1,   // 采样 10% 减少开销
+	EnableBreakpoints: false,    // 生产环境关闭断点
+	SampleRate:        &prodRate, // 采样 10% 减少开销
 })
 ```
 

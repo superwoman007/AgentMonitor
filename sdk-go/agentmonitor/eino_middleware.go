@@ -3,32 +3,13 @@ package agentmonitor
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"time"
 )
 
-// EinoSpanContext holds span info for Eino middleware tracing
-type EinoSpanContext struct {
-	SpanID       string
-	TraceID      string
-	ParentSpanID string
-	Name         string
-	TraceType    string
-	StartedAt    string
-	EndedAt      string
-	LatencyMs    float64
-	Input        interface{}
-	Output       interface{}
-	Error        string
-	Status       string
-}
-
-// EinoMiddleware is a generic middleware that wraps any function call
-// and reports spans to AgentMonitor. It can be adapted to Eino, Gin,
-// or any other Go framework.
+// EinoMiddleware 是一个通用中间件，用于包装任意函数调用并把 span 上报到 AgentMonitor。
+// 可适配到 Eino、Gin 或其他 Go 框架。
 //
-// Usage with Eino (conceptual):
+// 在 Eino 中使用（概念示例）：
 //
 //	model.WithMiddleware(func(next model.ChatModel) model.ChatModel {
 //		return &tracedChatModel{
@@ -37,18 +18,38 @@ type EinoSpanContext struct {
 //		}
 //	})
 //
-// The tracedChatModel can use EinoMiddleware.Generate or EinoMiddleware.Call
-// to wrap individual invocations.
+// tracedChatModel 可调用 EinoMiddleware.Generate / EinoMiddleware.Call
+// 来包装单次调用。
 type EinoMiddleware struct {
 	Monitor *AgentMonitor
 }
 
-// NewEinoMiddleware creates a new middleware helper
+// NewEinoMiddleware 创建一个新的 EinoMiddleware 实例。
+//
+// 参数：
+//   - monitor: 已初始化的 AgentMonitor 客户端
+//
+// 返回值：
+//   - *EinoMiddleware 实例
 func NewEinoMiddleware(monitor *AgentMonitor) *EinoMiddleware {
 	return &EinoMiddleware{Monitor: monitor}
 }
 
-// TraceFunc wraps a generic function call with span tracing
+// TraceFunc 使用 span 追踪包装一个通用函数调用。
+//
+// Truth Repair-3：内部通过 StartSpanContext 把 span 绑定到调用链 ctx，
+// 子调用透传返回的 ctx 即可自动建立父子关系，避免 goroutine 间串扰。
+//
+// 参数：
+//   - ctx: 父 context.Context
+//   - name: Span 名称
+//   - traceType: Span 类型（llm/tool/chain 等）
+//   - input: 输入数据
+//   - fn: 被追踪的业务函数
+//
+// 返回值：
+//   - result: 业务函数返回值
+//   - err: 业务函数错误
 func (m *EinoMiddleware) TraceFunc(
 	ctx context.Context,
 	name string,
@@ -60,60 +61,31 @@ func (m *EinoMiddleware) TraceFunc(
 		return fn()
 	}
 
-	traceID, _ := ctx.Value("agentmonitor_trace_id").(string)
-	if traceID == "" {
-		traceID = generateUUID()
-		ctx = context.WithValue(ctx, "agentmonitor_trace_id", traceID)
-	}
-
-	parentSpanID, _ := ctx.Value("agentmonitor_span_id").(string)
-	spanID := generateUUID()
-	startedAt := time.Now().UTC().Format(time.RFC3339)
-
-	// Buffer start span
-	m.Monitor.bufferSpan(EinoSpanContext{
-		SpanID:       spanID,
-		TraceID:      traceID,
-		ParentSpanID: parentSpanID,
-		Name:         name,
-		TraceType:    traceType,
-		StartedAt:    startedAt,
-		Input:        input,
-		Status:       "unset",
+	childCtx, span := m.Monitor.StartSpanContext(ctx, name, map[string]interface{}{
+		"input": input,
 	})
+	span.TraceType = traceType
 
 	result, err := fn()
-
-	endedAt := time.Now().UTC().Format(time.RFC3339)
-	latencyMs := float64(time.Since(mustParseTime(startedAt)).Milliseconds())
-	status := "success"
-	errStr := ""
 	if err != nil {
-		status = "error"
-		errStr = err.Error()
+		m.Monitor.EndSpan(span, "error", nil, err.Error())
+		return result, err
 	}
-
-	m.Monitor.bufferSpan(EinoSpanContext{
-		SpanID:    spanID,
-		TraceID:   traceID,
-		Name:      name,
-		TraceType: traceType,
-		StartedAt: startedAt,
-		EndedAt:   endedAt,
-		LatencyMs: latencyMs,
-		Input:     input,
-		Output:    result,
-		Error:     errStr,
-		Status:    status,
-	})
-
-	// Propagate current span_id so child spans can set parent
-	ctx = context.WithValue(ctx, "agentmonitor_span_id", spanID)
-
-	return result, err
+	m.Monitor.EndSpan(span, "ok", result, "")
+	_ = childCtx
+	return result, nil
 }
 
-// TraceGenerate is a convenience wrapper for LLM generate calls (Eino compatible)
+// TraceGenerate 是 LLM generate 调用的便捷封装（Eino 兼容）。
+//
+// 参数：
+//   - ctx: 父 context.Context
+//   - name: Span 名称（通常是模型名）
+//   - input: 输入数据
+//   - generate: 被追踪的生成函数
+//
+// 返回值：
+//   - 生成函数的返回值与错误
 func (m *EinoMiddleware) TraceGenerate(
 	ctx context.Context,
 	name string,
@@ -123,7 +95,16 @@ func (m *EinoMiddleware) TraceGenerate(
 	return m.TraceFunc(ctx, name, "llm", input, generate)
 }
 
-// TraceTool is a convenience wrapper for tool calls (Eino compatible)
+// TraceTool 是工具调用的便捷封装（Eino 兼容）。
+//
+// 参数：
+//   - ctx: 父 context.Context
+//   - name: Span 名称（通常是工具名）
+//   - input: 输入参数
+//   - call: 被追踪的工具函数
+//
+// 返回值：
+//   - 工具函数的返回值与错误
 func (m *EinoMiddleware) TraceTool(
 	ctx context.Context,
 	name string,
@@ -133,7 +114,16 @@ func (m *EinoMiddleware) TraceTool(
 	return m.TraceFunc(ctx, name, "tool", input, call)
 }
 
-// TraceChain is a convenience wrapper for chain calls (Eino compatible)
+// TraceChain 是 chain 调用的便捷封装（Eino 兼容）。
+//
+// 参数：
+//   - ctx: 父 context.Context
+//   - name: Span 名称（通常是 chain 名）
+//   - input: 输入数据
+//   - call: 被追踪的 chain 函数
+//
+// 返回值：
+//   - chain 函数的返回值与错误
 func (m *EinoMiddleware) TraceChain(
 	ctx context.Context,
 	name string,
@@ -143,16 +133,7 @@ func (m *EinoMiddleware) TraceChain(
 	return m.TraceFunc(ctx, name, "chain", input, call)
 }
 
-// mustParseTime parses RFC3339 time or returns zero time
-func mustParseTime(s string) time.Time {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-// ExampleEinoChatModel shows how to adapt this middleware to Eino's model.ChatModel
+// ExampleEinoChatModel 展示如何把本中间件适配到 Eino 的 model.ChatModel
 //
 //	type tracedChatModel struct {
 //		base    model.ChatModel
@@ -171,15 +152,6 @@ func mustParseTime(s string) time.Time {
 //	}
 type ExampleEinoChatModel struct{}
 
-func (m *AgentMonitor) bufferSpan(span EinoSpanContext) {
-	if !m.config.EnableSpanWrite {
-		return
-	}
-	m.mu.Lock()
-	m.buffer = append(m.buffer, BufferedEvent{
-		Type: "span",
-		Data: span,
-	})
-	m.mu.Unlock()
-	m.maybeFlush()
-}
+// 保持对 time 包的引用，避免未来扩展时重复导入；
+// 目前 startedAt 由 StartSpanContext 内部统一生成。
+var _ = time.RFC3339

@@ -27,6 +27,8 @@ from .types import (
     BreakpointPauseHandler,
     SpanContext,
 )
+from . import context as span_context
+from .prompt_runtime import PromptRuntimeClient, ResolvedPrompt, PromptEnvironment
 
 
 class AgentMonitor:
@@ -56,8 +58,14 @@ class AgentMonitor:
         self.session_sample_decisions: Dict[str, bool] = {}
 
         # P0-01: Span 级追踪
-        self.span_stack: Dict[str, List[SpanContext]] = {}
+        # active_spans 仅作为活跃 span 的注册表（span_id -> SpanContext），
+        # 用于内存上限保护与 close() 时兜底关闭。真正的父子关系与并发隔离
+        # 由 contextvars 维护（见 context.py），不再依赖进程级共享栈。
+        self.active_spans: Dict[str, SpanContext] = {}
         self.MAX_SPAN_STACK_SIZE = 1000
+
+        # PR-12: Prompt Runtime 客户端（懒加载）
+        self._prompt_runtime: Optional[PromptRuntimeClient] = None
 
         self._lock = threading.Lock()
         self._flush_timer: Optional[threading.Timer] = None
@@ -138,13 +146,26 @@ class AgentMonitor:
             return sync_wrapper
 
     def trace(self, data: TraceData):
-        """记录追踪数据"""
+        """记录追踪数据。
+
+        V2 协议：SDK 生成统一的 traceId/spanId 并随 /traces 请求发送，
+        后端 createTrace 是根 Span 的唯一写入点；SDK 不再向 buffer 双写 span，
+        避免产生重复根节点与 traceId/spanId 不一致的孤儿数据。
+        """
         if self.config.disabled:
             return
 
         # P1: 采样检查
         if not self._should_sample(data):
             return
+
+        import uuid
+        # 仅在调用方未显式传入时生成 ID，保证一次 trace 全链路使用同一组 ID
+        if not data.trace_id:
+            data.trace_id = str(uuid.uuid4())
+        if not data.span_id:
+            data.span_id = str(uuid.uuid4())
+        # trace 作为根 Span，没有 parentSpanId（保持 None）
 
         enriched_data = data
         if not enriched_data.started_at:
@@ -154,24 +175,6 @@ class AgentMonitor:
 
         with self._lock:
             self.buffer.append({"type": "trace", "data": asdict(enriched_data)})
-            # 双写 span：trace 记录的同时额外写入一条 span 事件
-            if self.config.enable_span_write:
-                import uuid
-                span_data = SpanContext(
-                    span_id=str(uuid.uuid4()),
-                    trace_id=str(uuid.uuid4()),
-                    name=data.name or data.trace_type,
-                    trace_type=data.trace_type,
-                    started_at=enriched_data.started_at or "",
-                    ended_at=enriched_data.ended_at,
-                    latency_ms=data.latency_ms,
-                    input=data.input,
-                    output=data.output,
-                    status=enriched_data.status,
-                    error=data.error,
-                    session_id=data.session_id,
-                )
-                self.buffer.append({"type": "span", "data": asdict(span_data)})
             self._maybe_flush()
 
     def trace_llm(
@@ -183,16 +186,78 @@ class AgentMonitor:
         success: bool = True,
         error: Optional[str] = None,
     ):
-        """追踪 LLM 调用"""
+        """追踪 LLM 调用。
+
+        PR-12：若 request 中携带 ``prompt_ref``（通过 Runtime 解析的 Prompt 引用），
+        自动把 ``prompt.id / prompt.version_id`` 等写入 metadata，便于按版本聚合 Trace。
+        """
+        metadata: Dict[str, Any] = {"model": model}
+        if response and isinstance(response, dict) and "usage" in response:
+            metadata["usage"] = response["usage"]
+        prompt_ref = request.get("prompt_ref") if isinstance(request, dict) else None
+        if isinstance(prompt_ref, dict):
+            metadata["prompt"] = {
+                "id": prompt_ref.get("id"),
+                "version_id": prompt_ref.get("version_id"),
+                "name": prompt_ref.get("name"),
+                "version_number": prompt_ref.get("version_number"),
+                "environment": prompt_ref.get("environment"),
+            }
         self.trace(TraceData(
             trace_type="llm",
             name=model,
             input=request,
             output=response,
+            metadata=metadata,
             latency_ms=latency_ms,
             status="success" if success else "error",
             error=error,
         ))
+
+    # ─────────────────────────────────────────────
+    # PR-12: Prompt Runtime
+    # ─────────────────────────────────────────────
+
+    def _get_prompt_runtime(self) -> PromptRuntimeClient:
+        """懒加载 Prompt Runtime 客户端。"""
+        if self._prompt_runtime is not None:
+            return self._prompt_runtime
+        project_id = self.config.project_id or self._get_project_id()
+        if not project_id:
+            raise RuntimeError(
+                "[AgentMonitor] project_id is required for prompt runtime. "
+                "Set `project_id` in SDKConfig or use an api_key formatted as `<projectId>_<secret>`."
+            )
+        self._prompt_runtime = PromptRuntimeClient(
+            base_url=self.config.base_url,
+            api_key=self.config.api_key,
+            project_id=project_id,
+            default_max_age_sec=self.config.prompt_cache_ttl_sec,
+        )
+        return self._prompt_runtime
+
+    def get_prompt(
+        self,
+        prompt_name: str,
+        environment: PromptEnvironment = "production",
+        max_age_sec: Optional[float] = None,
+        force_refresh: bool = False,
+        timeout: float = 10.0,
+    ) -> ResolvedPrompt:
+        """从 Runtime 解析已发布的 Prompt。"""
+        return self._get_prompt_runtime().get(
+            prompt_name,
+            environment=environment,
+            max_age_sec=max_age_sec,
+            force_refresh=force_refresh,
+            timeout=timeout,
+        )
+
+    def clear_prompt_cache(self) -> None:
+        """清空 Prompt Runtime 缓存。"""
+        if self._prompt_runtime is not None:
+            self._prompt_runtime.clear_cache()
+
 
     def start_session(self, session_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> SessionData:
         """开始会话"""
@@ -289,9 +354,12 @@ class AgentMonitor:
                    session_id: Optional[str] = None) -> SpanContext:
         """开始一个新的 Span。
 
+        Truth Repair-3：trace_id/parent_span_id 从当前 contextvars 异步上下文读取，
+        不再依赖进程级共享栈，避免 asyncio 并发任务间的 trace 串扰。
+
         Args:
             name: Span 名称（如函数名或操作名）
-            trace_id: 所属 traceId，缺省时自动使用当前栈中的 traceId 或新生成一个
+            trace_id: 显式指定所属 traceId；缺省时从当前异步上下文读取或新生成一个
             input_data: 输入数据（可选）
             attributes: 附加属性字典（可选）
             session_id: 会话 ID，缺省时使用当前会话 ID（可选）
@@ -299,9 +367,11 @@ class AgentMonitor:
             创建好的 SpanContext 实例
         """
         import uuid
-        tid = trace_id or self._get_current_trace_id() or str(uuid.uuid4())
+        # 从当前异步链读取 traceId；无则生成一个作为新链路根
+        tid = trace_id or span_context.get_active_trace_id() or str(uuid.uuid4())
         span_id = str(uuid.uuid4())
-        parent_span_id = self._get_current_span_id(tid)
+        # 从当前异步链读取栈顶 spanId 作为父级
+        parent_span_id = span_context.get_active_span_id()
 
         ctx = SpanContext(
             span_id=span_id,
@@ -315,11 +385,12 @@ class AgentMonitor:
             session_id=session_id or self.current_session_id,
         )
 
-        if tid not in self.span_stack:
-            self.span_stack[tid] = []
-        self.span_stack[tid].append(ctx)
-
-        self._maybe_cleanup_span_stack()
+        # 压入当前异步上下文栈，维护父子关系
+        span_context.push_active_span(ctx)
+        # 同时注册到实例级活跃表，用于内存保护与 close() 兜底
+        with self._lock:
+            self.active_spans[span_id] = ctx
+        self._maybe_cleanup_active_spans()
         self._buffer_span(ctx)
         return ctx
 
@@ -330,7 +401,7 @@ class AgentMonitor:
 
         Args:
             ctx: 由 start_span 返回的 SpanContext
-            status: 状态字符串；未提供时根据 error 自动推导 success/error
+            status: 状态字符串；未提供时根据 error 自动推导 ok/error
             output: 输出数据（可选）
             error: 错误信息（可选）
             attributes: 需要合并写入的附加属性（可选）
@@ -346,9 +417,13 @@ class AgentMonitor:
         except Exception:
             pass
 
+        # V2 协议：成功终态统一为 'ok'，兼容旧调用方传 'success'
+        raw_status = status or ("error" if error else "ok")
+        normalized_status = "ok" if raw_status == "success" else raw_status
+
         ctx.ended_at = ended_at
         ctx.latency_ms = latency_ms
-        ctx.status = status or ("error" if error else "success")
+        ctx.status = normalized_status
         ctx.output = output
         ctx.error = error
         if attributes:
@@ -357,12 +432,11 @@ class AgentMonitor:
             else:
                 ctx.attributes = attributes
 
-        # 出栈
-        stack = self.span_stack.get(ctx.trace_id, [])
-        for i, s in enumerate(stack):
-            if s.span_id == ctx.span_id:
-                stack.pop(i)
-                break
+        # 从当前异步上下文栈弹出
+        span_context.pop_active_span(ctx)
+        # 从实例级活跃表移除
+        with self._lock:
+            self.active_spans.pop(ctx.span_id, None)
 
         self._buffer_span(ctx)
 
@@ -380,6 +454,27 @@ class AgentMonitor:
         """
         return _SpanContextManager(self, name, trace_id, input_data, attributes)
 
+    def set_span_attribute(self, key: str, value: Any) -> bool:
+        """在当前异步上下文活跃的 Span 上设置单个属性。
+
+        Args:
+            key: 属性键名
+            value: 属性值
+        Returns:
+            True 表示存在活跃 span 并已写入；False 表示当前不在 span 上下文中
+        """
+        return span_context.set_span_attribute(key, value)
+
+    def set_span_attributes(self, attrs: Dict[str, Any]) -> bool:
+        """在当前异步上下文活跃的 Span 上批量合并属性。
+
+        Args:
+            attrs: 需要合并写入的属性字典
+        Returns:
+            True 表示存在活跃 span 并已写入；False 表示当前不在 span 上下文中
+        """
+        return span_context.set_span_attributes(attrs)
+
     def _buffer_span(self, span: SpanContext):
         """将 span 数据推入 buffer。
 
@@ -394,47 +489,23 @@ class AgentMonitor:
             self.buffer.append({"type": "span", "data": asdict(span)})
             self._maybe_flush()
 
-    def _get_current_trace_id(self) -> Optional[str]:
-        """获取当前 traceId。
-
-        Args:
-            无
-        Returns:
-            若存在活跃 span 栈则返回对应的 traceId；否则返回 None
-        """
-        for tid, stack in self.span_stack.items():
-            if stack:
-                return tid
-        return None
-
-    def _get_current_span_id(self, trace_id: str) -> Optional[str]:
-        """获取当前层级的 parentSpanId。
-
-        Args:
-            trace_id: 目标 traceId
-        Returns:
-            若该 traceId 存在 span 栈则返回栈顶 spanId；否则返回 None
-        """
-        stack = self.span_stack.get(trace_id, [])
-        return stack[-1].span_id if stack else None
-
-    def _maybe_cleanup_span_stack(self):
-        """内存保护：span 总数超过阈值时清理。
+    def _maybe_cleanup_active_spans(self):
+        """内存保护：活跃 span 总数超过阈值时强制关闭最早注册的 span。
 
         Args:
             无
         Returns:
             None
         """
-        total = sum(len(s) for s in self.span_stack.values())
-        if total > self.MAX_SPAN_STACK_SIZE:
-            first_key = next(iter(self.span_stack), None)
-            if first_key:
-                stack = self.span_stack.pop(first_key)
-                for span in stack:
-                    span.status = "error"
-                    span.error = "auto-closed: stack overflow"
-                    self._buffer_span(span)
+        with self._lock:
+            if len(self.active_spans) > self.MAX_SPAN_STACK_SIZE:
+                # dict 在 Python 3.7+ 保持插入顺序，next(iter(...)) 取最早 key
+                first_key = next(iter(self.active_spans), None)
+                if first_key:
+                    stale = self.active_spans.pop(first_key)
+                    stale.status = "error"
+                    stale.error = "auto-closed: active span overflow"
+                    self._buffer_span(stale)
 
     def set_variable(self, key: str, value: Any):
         """设置变量"""
@@ -690,14 +761,14 @@ class AgentMonitor:
         if self.retry_timer:
             self.retry_timer.cancel()
 
-        # 自动结束所有未关闭的 span
-        for tid, stack in self.span_stack.items():
-            while stack:
-                span = stack.pop()
-                span.status = "error"
-                span.error = "auto-closed: monitor closed"
-                self._buffer_span(span)
-        self.span_stack.clear()
+        # 自动结束所有未关闭的 span（active_spans 注册表兜底，与异步上下文解耦）
+        with self._lock:
+            spans_to_close = list(self.active_spans.values())
+            self.active_spans.clear()
+        for span in spans_to_close:
+            span.status = "error"
+            span.error = "auto-closed: monitor closed"
+            self._buffer_span(span)
 
         self.flush()
 
@@ -766,5 +837,6 @@ class _SpanContextManager:
             if exc_type:
                 self.monitor.end_span(self.span, status="error", error=str(exc_val))
             else:
-                self.monitor.end_span(self.span, status="success")
+                # V2 协议：成功终态统一为 'ok'
+                self.monitor.end_span(self.span, status="ok")
         return False  # 不吞异常

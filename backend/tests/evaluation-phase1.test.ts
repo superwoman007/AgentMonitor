@@ -297,6 +297,20 @@ describe('Evaluation Center Phase 1 API', () => {
         })
         .expect(201);
 
+      // Create an evaluator and bind it to the experiment（Truth Repair-6: Runner 要求实验绑定评估器）
+      const evResponse = await request(app.server)
+        .post('/api/evaluation/evaluators')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Progress Test Exact Match Evaluator',
+          type: 'exact_match',
+          description: 'For progress testing',
+          config: { case_sensitive: false },
+        })
+        .expect(201);
+      const progressEvaluatorId = evResponse.body.id;
+
       // Create experiment for progress testing WITH target model config
       const expResponse = await request(app.server)
         .post('/api/evaluation/experiments')
@@ -307,15 +321,29 @@ describe('Evaluation Center Phase 1 API', () => {
           dataset_id: progressDatasetId,
           description: 'For progress testing',
           target_model_config_id: modelConfigId,
+          evaluator_id: progressEvaluatorId,
         })
         .expect(201);
       progressExperimentId = expResponse.body.id;
 
-      // Start experiment
+      // Start experiment（Truth Repair-8: 立即返回 202，后台异步执行）
       await request(app.server)
         .post(`/api/evaluation/experiments/${progressExperimentId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
+
+      // 轮询等待后台异步评测完成，保证后续进度断言稳定
+      await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${progressExperimentId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'completed' && res.body.status !== 'failed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+        },
+        { timeout: 10000, interval: 100 }
+      );
     });
 
     it('should return experiment progress after auto-execution', async () => {

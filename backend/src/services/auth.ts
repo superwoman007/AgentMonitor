@@ -37,7 +37,7 @@ export function validatePasswordStrength(password: string): string | null {
   if (config.security.passwordRequireNumber && !/[0-9]/.test(password)) {
     return 'Password must contain at least one number';
   }
-  if (config.security.passwordRequireSpecial && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (config.security.passwordRequireSpecial && /[^A-Za-z0-9]/.test(password) === false) {
     return 'Password must contain at least one special character';
   }
   return null;

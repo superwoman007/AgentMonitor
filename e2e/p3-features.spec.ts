@@ -4,7 +4,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 const generateTestEmail = () => `e2e-p3-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-const testPassword = 'Test123456!';
+const testPassword = 'Test1234567!';
 
 test.describe('P3 功能深度测试 (Phase 3 - 核心功能闭环)', () => {
   let testEmail: string;
@@ -203,15 +203,15 @@ test.describe('P3 功能深度测试 (Phase 3 - 核心功能闭环)', () => {
     await expect(page.locator('main h1, [class*="col-span"] h1').first()).toContainText(/Session|会话详情/);
 
     // 查找 Agent Loop 切换按钮
-    const agentLoopBtn = page.locator('button').filter({ hasText: /Agent Loop|Agent 循环/i }).first();
+    const agentLoopBtn = page.locator('button').filter({ hasText: /Agent Loop|Agent 循环|ReAct/i }).first();
     await expect(agentLoopBtn).toBeVisible();
 
     // 点击切换到 Agent Loop 视图
     await agentLoopBtn.click();
     await page.waitForTimeout(500);
 
-    // 验证 Loop 卡片存在
-    await expect(page.locator('text=Loop #1').first()).toBeVisible();
+    // 验证 ReAct 步骤卡片存在
+    await expect(page.locator('[data-testid="react-step"]').first()).toBeVisible();
 
     // 验证 Observation / Thought 标签存在
     const hasObservation = await page.locator('text=Observation').or(page.locator('text=观察')).first().isVisible().catch(() => false);

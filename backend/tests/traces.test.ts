@@ -66,27 +66,29 @@ describe('Traces API', () => {
     });
 
     it('应该接受 OTel 标识符', async () => {
+      const unique = `otel-${Date.now()}`;
       const response = await request(app.server)
         .post('/api/traces')
         .set('X-API-Key', apiKey)
         .send({
           traceType: 'llm',
           name: 'otel-trace',
-          traceId: 'abc123',
-          spanId: 'span456',
-          parentSpanId: 'parent789',
+          traceId: `trace-${unique}`,
+          spanId: `span-${unique}`,
+          parentSpanId: `parent-${unique}`,
           status: 'success',
         })
         .expect(201);
 
-      expect(response.body.trace.trace_id).toBe('abc123');
-      expect(response.body.trace.span_id).toBe('span456');
-      expect(response.body.trace.parent_span_id).toBe('parent789');
+      expect(response.body.trace.trace_id).toBe(`trace-${unique}`);
+      expect(response.body.trace.span_id).toBe(`span-${unique}`);
+      expect(response.body.trace.parent_span_id).toBe(`parent-${unique}`);
     });
   });
 
   describe('POST /api/traces/otel-export', () => {
     it('应该导入 OTel spans 并创建 traces', async () => {
+      const suffix = Date.now();
       const response = await request(app.server)
         .post('/api/traces/otel-export')
         .set('X-API-Key', apiKey)
@@ -95,8 +97,8 @@ describe('Traces API', () => {
             scopeSpans: [{
               spans: [
                 {
-                  traceId: 'otel-trace-1',
-                  spanId: 'otel-span-1',
+                  traceId: `otel-trace-1-${suffix}`,
+                  spanId: `otel-span-1-${suffix}`,
                   name: 'llm-completion',
                   kind: 'INTERNAL',
                   startTimeUnixNano: String(Date.now() * 1000000),
@@ -108,8 +110,8 @@ describe('Traces API', () => {
                   status: { code: 'OK' },
                 },
                 {
-                  traceId: 'otel-trace-2',
-                  spanId: 'otel-span-2',
+                  traceId: `otel-trace-2-${suffix}`,
+                  spanId: `otel-span-2-${suffix}`,
                   name: 'tool-call',
                   kind: 'INTERNAL',
                   startTimeUnixNano: String(Date.now() * 1000000),
@@ -143,6 +145,7 @@ describe('Traces API', () => {
 
   describe('GET /api/traces/:id/otel', () => {
     it('应该以 OTel 格式导出 trace', async () => {
+      const suffix = Date.now();
       const createRes = await request(app.server)
         .post('/api/traces')
         .set('X-API-Key', apiKey)
@@ -152,8 +155,8 @@ describe('Traces API', () => {
           input: { prompt: 'hello' },
           output: { content: 'world' },
           status: 'success',
-          traceId: 'export-trace-1',
-          spanId: 'export-span-1',
+          traceId: `export-trace-${suffix}`,
+          spanId: `export-span-${suffix}`,
         })
         .expect(201);
 
@@ -164,8 +167,8 @@ describe('Traces API', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(response.body.span).toHaveProperty('traceId', 'export-trace-1');
-      expect(response.body.span).toHaveProperty('spanId', 'export-span-1');
+      expect(response.body.span).toHaveProperty('traceId', `export-trace-${suffix}`);
+      expect(response.body.span).toHaveProperty('spanId', `export-span-${suffix}`);
       expect(response.body.span).toHaveProperty('name', 'export-test');
       expect(response.body.span.status.code).toBe('OK');
       expect(response.body.span.attributes['trace.type']).toBe('llm');
@@ -275,6 +278,94 @@ describe('Traces API', () => {
         .expect(200);
 
       expect(response.body.trace.prompt_id).toBe(promptId);
+    });
+  });
+
+  describe('session.end 事件关闭 Session（Truth Repair-4）', () => {
+    it('上报 traceType=session & name=session_end 时应将对应 Session 置为 ended', async () => {
+      // 1. 显式创建一个 active 状态的 Session
+      const customSid = `sess-end-${Date.now()}`;
+      await request(app.server)
+        .post('/api/sessions')
+        .set('X-API-Key', apiKey)
+        .send({ session_id: customSid })
+        .expect(201);
+
+      // 2. 通过 trace 接口上报 session_end 事件（模拟三端 SDK 的 endSession 行为）
+      await request(app.server)
+        .post('/api/traces')
+        .set('X-API-Key', apiKey)
+        .send({
+          sessionId: customSid,
+          traceType: 'session',
+          name: 'session_end',
+          status: 'success',
+          endedAt: new Date().toISOString(),
+        })
+        .expect(201);
+
+      // 3. 查询 Session 详情，确认状态已被关闭
+      const detailRes = await request(app.server)
+        .get(`/api/sessions/${customSid}`)
+        .set('X-API-Key', apiKey)
+        .expect(200);
+
+      expect(detailRes.body.status).toBe('ended');
+      expect(detailRes.body.ended_at).toBeTruthy();
+    });
+
+    it('上报 V2 风格 name=session.end 时也应关闭 Session', async () => {
+      const customSid = `sess-end-v2-${Date.now()}`;
+      await request(app.server)
+        .post('/api/sessions')
+        .set('X-API-Key', apiKey)
+        .send({ session_id: customSid })
+        .expect(201);
+
+      await request(app.server)
+        .post('/api/traces')
+        .set('X-API-Key', apiKey)
+        .send({
+          sessionId: customSid,
+          traceType: 'session',
+          name: 'session.end',
+          status: 'success',
+        })
+        .expect(201);
+
+      const detailRes = await request(app.server)
+        .get(`/api/sessions/${customSid}`)
+        .set('X-API-Key', apiKey)
+        .expect(200);
+
+      expect(detailRes.body.status).toBe('ended');
+    });
+
+    it('非 session_end 的普通 trace 不应关闭 Session', async () => {
+      const customSid = `sess-keep-${Date.now()}`;
+      await request(app.server)
+        .post('/api/sessions')
+        .set('X-API-Key', apiKey)
+        .send({ session_id: customSid })
+        .expect(201);
+
+      await request(app.server)
+        .post('/api/traces')
+        .set('X-API-Key', apiKey)
+        .send({
+          sessionId: customSid,
+          traceType: 'llm',
+          name: 'normal-trace',
+          status: 'success',
+        })
+        .expect(201);
+
+      const detailRes = await request(app.server)
+        .get(`/api/sessions/${customSid}`)
+        .set('X-API-Key', apiKey)
+        .expect(200);
+
+      expect(detailRes.body.status).toBe('active');
     });
   });
 });

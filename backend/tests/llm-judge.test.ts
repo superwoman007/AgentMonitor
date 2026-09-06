@@ -142,7 +142,7 @@ describe('LLM Judge Evaluator', () => {
       const targetModelConfigId = cfgRes.body.id;
 
       // Create evaluator without model_config (will fallback to heuristic)
-      await request(app.server)
+      const evRes = await request(app.server)
         .post('/api/evaluation/evaluators')
         .set('Authorization', `Bearer ${authToken}`)
         .send({
@@ -152,6 +152,7 @@ describe('LLM Judge Evaluator', () => {
           config: { criteria: 'general', threshold: 0.5 },
         })
         .expect(201);
+      const evaluatorId = evRes.body.id;
 
       // Mock LLM response for target model
       const mockedCallLLM = vi.mocked(callLLM);
@@ -166,19 +167,33 @@ describe('LLM Judge Evaluator', () => {
           name: 'LLM Judge Experiment',
           dataset_id: datasetId,
           target_model_config_id: targetModelConfigId,
+          evaluator_id: evaluatorId,
         })
         .expect(201);
 
       const experimentId = expRes.body.id;
 
-      // Start experiment (auto-runs evaluation)
-      const startRes = await request(app.server)
+      // Truth Repair-8: start 立即返回 202，后台异步执行
+      await request(app.server)
         .post(`/api/evaluation/experiments/${experimentId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
 
-      expect(startRes.body).toHaveProperty('status');
-      expect(startRes.body.status).toBe('completed');
+      // 轮询等待后台异步评测完成
+      const completed = await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${experimentId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status !== 'completed') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+          return res.body;
+        },
+        { timeout: 10000, interval: 100 }
+      );
+      expect(completed).toHaveProperty('status');
+      expect(completed.status).toBe('completed');
 
       // Check results
       const resultsRes = await request(app.server)

@@ -24,6 +24,20 @@ import { modelConfigRoutes } from './routes/modelConfigs.js';
 import { toolCallsRoutes } from './routes/toolCalls.js';
 import { feedbackRoutes } from './routes/feedback.js';
 import { spansRoutes } from './routes/spans.js';
+import { telemetryV2Routes } from './routes/telemetry-v2.js';
+import { integrationStatusRoutes } from './routes/integration-status.js';
+import { agentTargetRoutes } from './routes/agent-targets.js';
+import { evaluatorSuiteRoutes } from './routes/evaluator-suites.js';
+import { datasetVersionItemRoutes } from './routes/dataset-version-items.js';
+import { evaluationRunRoutes } from './routes/evaluation-runs.js';
+import { serviceTokenRoutes } from './routes/service-tokens.js';
+import { runnerRoutes } from './routes/runner.js';
+import { promptDeploymentRoutes } from './routes/prompt-deployments.js';
+import { scheduledRunRoutes } from './routes/scheduled-runs.js';
+import { traceSamplingRuleRoutes } from './routes/trace-sampling-rules.js';
+import { alertRuleRoutes } from './routes/alert-rules.js';
+import { traceAnnotationRoutes } from './routes/trace-annotations.js';
+import { startEvaluationWorker } from './services/evaluation-worker.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -56,10 +70,15 @@ export async function buildApp() {
   });
 
   // Rate limiting
-  await app.register(rateLimit, {
-    max: config.rateLimit.global.max,
-    timeWindow: config.rateLimit.global.timeWindow,
-  });
+  // 限流：生产环境或显式启用 RATE_LIMIT_ENABLED=true 时开启。
+  // 测试/开发环境默认关闭，避免本地集成测试触发 429；rate-limit.test.ts 通过环境变量显式启用。
+  const rateLimitEnabled = config.isProduction || process.env.RATE_LIMIT_ENABLED === 'true';
+  if (rateLimitEnabled) {
+    await app.register(rateLimit, {
+      max: config.rateLimit.global.max,
+      timeWindow: config.rateLimit.global.timeWindow,
+    });
+  }
 
   await app.register(websocket);
 
@@ -84,7 +103,26 @@ export async function buildApp() {
   await app.register(toolCallsRoutes, { prefix: `${config.api.prefix}/tool-calls` });
   await app.register(feedbackRoutes, { prefix: `${config.api.prefix}/feedbacks` });
   await app.register(spansRoutes, { prefix: `${config.api.prefix}/spans` });
+  await app.register(telemetryV2Routes, { prefix: '/api/v2/telemetry' });
+  await app.register(integrationStatusRoutes, { prefix: '/api/v2/projects' });
+  await app.register(agentTargetRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(evaluatorSuiteRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(datasetVersionItemRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(evaluationRunRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(serviceTokenRoutes, { prefix: '/api/v2' });
+  await app.register(runnerRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(promptDeploymentRoutes, { prefix: '/api/v2' });
+  await app.register(scheduledRunRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(traceSamplingRuleRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(alertRuleRoutes, { prefix: '/api/v2/evaluation' });
+  await app.register(traceAnnotationRoutes, { prefix: '/api/v2' });
   await app.register(wsRoutes);
+
+  // 启动持久化评测 Worker（claim/lease/heartbeat/recovery）。
+  // 测试环境通过 EVAL_WORKER_ENABLED=true 显式开启，避免全局定时器干扰无关测试。
+  if (config.nodeEnv !== 'test' || process.env.EVAL_WORKER_ENABLED === 'true') {
+    await startEvaluationWorker();
+  }
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
     request.log.error({ err: error, requestId: request.id }, 'Unhandled error');

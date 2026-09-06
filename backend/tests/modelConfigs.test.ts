@@ -243,6 +243,99 @@ describe('Model Configs API', () => {
     });
   });
 
+  describe('国内供应商配置', () => {
+    it('应支持创建 DeepSeek 配置', async () => {
+      const response = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'DeepSeek V4',
+          provider: 'deepseek',
+          model: 'deepseek-v4-pro',
+          api_key: 'sk-deepseek-test',
+          base_url: 'https://api.deepseek.com',
+        })
+        .expect(201);
+
+      expect(response.body.provider).toBe('deepseek');
+      expect(response.body.model).toBe('deepseek-v4-pro');
+      expect(response.body.base_url).toBe('https://api.deepseek.com');
+    });
+
+    it('应支持创建 Kimi 配置', async () => {
+      const response = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Kimi K2.6',
+          provider: 'kimi',
+          model: 'kimi-k2.6',
+          api_key: 'sk-kimi-test',
+          base_url: 'https://api.moonshot.ai/v1',
+        })
+        .expect(201);
+
+      expect(response.body.provider).toBe('kimi');
+      expect(response.body.model).toBe('kimi-k2.6');
+    });
+
+    it('应支持创建 GLM 配置', async () => {
+      const response = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'GLM 4.7',
+          provider: 'glm',
+          model: 'glm-4.7',
+          api_key: 'sk-glm-test',
+          base_url: 'https://open.bigmodel.cn/api/paas/v4',
+        })
+        .expect(201);
+
+      expect(response.body.provider).toBe('glm');
+      expect(response.body.model).toBe('glm-4.7');
+    });
+
+    it('应支持创建豆包配置', async () => {
+      const response = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'Doubao Pro',
+          provider: 'doubao',
+          model: 'doubao-pro-32k',
+          api_key: 'sk-doubao-test',
+          base_url: 'https://ark.cn-beijing.volces.com/api/v3',
+        })
+        .expect(201);
+
+      expect(response.body.provider).toBe('doubao');
+      expect(response.body.model).toBe('doubao-pro-32k');
+    });
+
+    it('应支持创建 MiMo 配置', async () => {
+      const response = await request(app.server)
+        .post('/api/model-configs')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          project_id: projectId,
+          name: 'MiMo V2',
+          provider: 'mimo',
+          model: 'mimo-v2-pro',
+          api_key: 'sk-mimo-test',
+          base_url: 'https://api.xiaomimimo.com/v1',
+        })
+        .expect(201);
+
+      expect(response.body.provider).toBe('mimo');
+      expect(response.body.model).toBe('mimo-v2-pro');
+    });
+  });
+
   describe('DELETE /api/model-configs/:id', () => {
     it('should delete model config', async () => {
       const createRes = await request(app.server)

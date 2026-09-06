@@ -1,4 +1,4 @@
-import { query, queryOne } from '../db/index.js';
+import { toDbBool, query, queryOne } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 
@@ -49,7 +49,7 @@ export async function createBreakpoint(data: BreakpointCreateData): Promise<Brea
     `INSERT INTO breakpoints (id, project_id, name, type, condition, enabled, hit_threshold, hit_count)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [id, data.projectId, data.name, data.type, data.condition, data.enabled !== false ? 1 : 0, hitThreshold, 0]
+    [id, data.projectId, data.name, data.type, data.condition, toDbBool(data.enabled !== false), hitThreshold, 0]
   );
   
   if (!breakpoint) {
@@ -104,7 +104,7 @@ export async function updateBreakpoint(id: string, data: BreakpointUpdateData): 
   
   if (data.enabled !== undefined) {
     fields.push(`enabled = $${paramIndex}`);
-    values.push(data.enabled);
+    values.push(toDbBool(data.enabled));
     paramIndex++;
   }
 

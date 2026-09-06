@@ -137,6 +137,8 @@ export async function promptsRoutes(app: FastifyInstance): Promise<void> {
       description?: string;
       auto_regression?: boolean;
       regression_dataset_id?: string;
+      regression_model_config_id?: string;
+      regression_evaluator_id?: string;
     };
 
     try {
@@ -149,11 +151,20 @@ export async function promptsRoutes(app: FastifyInstance): Promise<void> {
       // Auto regression: create an experiment if requested
       let regressionExperiment = null;
       if (body.auto_regression && body.regression_dataset_id && prompt) {
+        if (!body.regression_model_config_id || !body.regression_evaluator_id) {
+          throw new Error('Auto regression requires regression_model_config_id and regression_evaluator_id');
+        }
         regressionExperiment = await createExperiment(
           prompt.project_id,
           `${prompt.name} 回归测试 v${version.version_number}`,
           body.regression_dataset_id,
-          `Auto-created regression test for prompt version ${version.version_number}`
+          `Auto-created regression test for prompt version ${version.version_number}`,
+          undefined,
+          prompt.id,
+          version.id,
+          body.regression_model_config_id,
+          version.config || undefined,
+          body.regression_evaluator_id
         );
       }
 

@@ -1,0 +1,27 @@
+# 本地部署覆盖配置
+# 用法：docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# 与生产配置（docker-compose.yml）的差异：
+# 1. 前端使用纯 HTTP（nginx.local.conf），主机端口 8080，无需 SSL 证书
+# 2. 后端端口映射到主机 3301，便于直接验证（同时避免与本地开发后端 3300 冲突）
+# 3. 后端连接容器内 PostgreSQL 关闭 SSL（本地 PG 无 TLS）
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  backend:
+    environment:
+      DB_SSL: "false"
+      # 本地部署放宽全局限流，避免高频 Agent 遥测上报被 429 拦截
+      RATE_LIMIT_MAX: "100000"
+      RATE_LIMIT_AUTH_MAX: "1000"
+    ports:
+      - "3301:3000"
+
+  frontend:
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.local.conf:/etc/nginx/conf.d/default.conf:ro

@@ -11,11 +11,15 @@ interface FilterBarProps {
 
 export function FilterBar({ filters, onFilterChange, onClear, traceTypes = [], t }: FilterBarProps) {
   const [nameInput, setNameInput] = useState(filters.name || '');
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     setNameInput(filters.name || '');
   }, [filters.name]);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
 
   const handleNameChange = (value: string) => {
     setNameInput(value);

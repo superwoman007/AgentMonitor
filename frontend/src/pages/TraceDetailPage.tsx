@@ -7,6 +7,7 @@ import { useSpanTree } from '../components/trace/useSpanTree';
 import { SpanTreeList } from '../components/trace/SpanTreeList';
 import { GanttChart } from '../components/trace/GanttChart';
 import { SpanDetailPanel } from '../components/trace/SpanDetailPanel';
+import { TraceAnnotationPanel } from '../components/trace/TraceAnnotationPanel';
 import { SpanTreeNode } from '../api';
 
 /**
@@ -175,6 +176,9 @@ export function TraceDetailPage() {
             </div>
           )}
         </div>
+
+        {/* 人工标注面板（P1） */}
+        <TraceAnnotationPanel traceId={trace.id} />
 
         {/* GanttChart 甘特图 */}
         <GanttChart

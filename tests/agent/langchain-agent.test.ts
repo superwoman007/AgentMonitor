@@ -34,7 +34,7 @@ describe('Layer 4: LangChain-like 模拟集成', () => {
   it('LangChain-like chain trace: fake LLMChain calls traceLLM and trace is recorded', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });
@@ -91,7 +91,7 @@ describe('Layer 4: LangChain-like 模拟集成', () => {
   it('LangChain-like agent with tool calls: fake AgentExecutor uses wrap for tools and traceLLM for LLM', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });
@@ -177,7 +177,7 @@ describe('Layer 4: LangChain-like 模拟集成', () => {
   it('Auto-instrument with fake OpenAI class: autoInstrumentOpenAI patches prototype, instance call captures trace', async () => {
     monitor = new AgentMonitor({
       apiKey: ctx.apiKey,
-      baseUrl: 'http://localhost:3000',
+      baseUrl: process.env.API_URL || 'http://localhost:3000',
       flushInterval: 999_999,
       bufferSize: 999_999,
     });

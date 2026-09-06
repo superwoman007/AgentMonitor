@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import request from 'supertest';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
@@ -9,6 +10,7 @@ describe('Evaluation Center Phase 2 API', () => {
   let projectId: string;
   let datasetId: string;
   let evaluatorId: string;
+  let modelConfigId: string;
   let experimentId: string;
   let resultId: string;
   const testEmail = `test-phase2-${Date.now()}@example.com`;
@@ -59,6 +61,19 @@ describe('Evaluation Center Phase 2 API', () => {
       .expect(201);
     evaluatorId = evalResponse.body.id;
 
+    const modelConfigResponse = await request(app.server)
+      .post('/api/model-configs')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        project_id: projectId,
+        name: 'Phase 2 Target Model',
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        api_key: 'sk-phase2-target-key',
+      })
+      .expect(201);
+    modelConfigId = modelConfigResponse.body.id;
+
     // Create experiment
     const expResponse = await request(app.server)
       .post('/api/evaluation/experiments')
@@ -67,11 +82,23 @@ describe('Evaluation Center Phase 2 API', () => {
       .expect(201);
     experimentId = expResponse.body.id;
 
-    // Start experiment and upload a result
+    // Truth Repair-8: start 立即返回 202；等待后台 runner 结束（无 target 会 failed，随后手动上传结果）
     await request(app.server)
       .post(`/api/evaluation/experiments/${experimentId}/start`)
       .set('Authorization', `Bearer ${authToken}`)
-      .expect(200);
+      .expect(202);
+
+    await vi.waitFor(
+      async () => {
+        const res = await request(app.server)
+          .get(`/api/evaluation/experiments/${experimentId}`)
+          .set('Authorization', `Bearer ${authToken}`);
+        if (res.body.status === 'pending' || res.body.status === 'running') {
+          throw new Error(`experiment still ${res.body.status}`);
+        }
+      },
+      { timeout: 10000, interval: 100 }
+    );
 
     const itemsRes = await request(app.server)
       .get(`/api/evaluation/datasets/${datasetId}/items`)
@@ -273,6 +300,8 @@ describe('Evaluation Center Phase 2 API', () => {
           description: 'Better version',
           auto_regression: true,
           regression_dataset_id: datasetId,
+          regression_model_config_id: modelConfigId,
+          regression_evaluator_id: evaluatorId,
         })
         .expect(201);
 
@@ -288,6 +317,10 @@ describe('Evaluation Center Phase 2 API', () => {
         e.name.includes('回归测试') || e.name.includes('regression')
       );
       expect(regressionExp).toBeDefined();
+      expect(regressionExp.prompt_id).toBe(promptId);
+      expect(regressionExp.prompt_version_id).toBe(versionRes.body.version.id);
+      expect(regressionExp.target_model_config_id).toBe(modelConfigId);
+      expect(regressionExp.evaluator_id).toBe(evaluatorId);
     });
   });
 });

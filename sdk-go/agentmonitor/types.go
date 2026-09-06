@@ -6,13 +6,23 @@ import "time"
 type SDKConfig struct {
 	APIKey            string
 	BaseURL           string
+	// PR-12：项目 ID。Prompt Runtime 等 V2 接口需要显式 projectId。
+	// 若为空，SDK 会按 `<projectId>_<rest>` 约定从 APIKey 解析。
+	ProjectID         string
 	Disabled          bool
 	BufferSize        int
 	FlushInterval     time.Duration
 	EnableBreakpoints bool
 	EnableSpanWrite   bool
-	SampleRate        float64
-	AlwaysCapture     []string
+	// SampleRate 采样率指针，取值 [0,1]：
+	//   0    = 全丢弃（除 alwaysCapture 强制上报的事件外）
+	//   1.0  = 全量上报
+	// 为区分 Go 零值"未设置"与"显式设为 0"，未设置时传 nil，Init 会将其重置为 1.0
+	// 示例：rate := 0.0; config.SampleRate = &rate
+	SampleRate *float64
+	AlwaysCapture []string
+	// PR-12：Prompt Runtime 缓存 TTL，默认 60 秒
+	PromptCacheTTL time.Duration
 }
 
 // SessionData represents a session
@@ -38,6 +48,11 @@ type TraceData struct {
 	LatencyMs float64                `json:"latencyMs,omitempty"`
 	Status    string                 `json:"status,omitempty"`
 	Error     string                 `json:"error,omitempty"`
+	// V2 协议：显式的 traceId/spanId/parentSpanId，SDK 生成后透传给后端，
+	// 后端 createTrace 据此唯一落库根 Span，避免 SDK/后端双写导致的孤儿根节点。
+	TraceID      string `json:"traceId,omitempty"`
+	SpanID       string `json:"spanId,omitempty"`
+	ParentSpanID string `json:"parentSpanId,omitempty"`
 }
 
 // MessageData represents a message
@@ -47,6 +62,25 @@ type MessageData struct {
 	Content   string                 `json:"content"`
 	Timestamp string                 `json:"timestamp,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// PromptRef 指向一个已通过 Runtime 解析的 Prompt 版本，
+// 可传入 TraceLLM 的 LLMRequest.PromptRef，在 LLM Span metadata 中
+// 自动写入 prompt.id / prompt.version_id 等字段。
+type PromptRef struct {
+	ID            string `json:"id"`
+	VersionID     string `json:"versionId"`
+	Name          string `json:"name,omitempty"`
+	VersionNumber int    `json:"versionNumber,omitempty"`
+	Environment   string `json:"environment,omitempty"`
+}
+
+// LLMRequest 是 TraceLLM 的推荐入参类型（仍兼容直接传 map/任意结构）。
+type LLMRequest struct {
+	Model     string        `json:"model"`
+	Messages  []interface{} `json:"messages,omitempty"`
+	Prompt    string        `json:"prompt,omitempty"`
+	PromptRef *PromptRef    `json:"promptRef,omitempty"`
 }
 
 // ToolCallData represents a tool call

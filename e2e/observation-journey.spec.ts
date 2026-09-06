@@ -4,7 +4,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5174';
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 const generateTestEmail = () => `obs-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-const testPassword = 'Test123456!';
+const testPassword = 'Test1234567!';
 
 test.describe('观测中心旅程：Dashboard → Traces → Sessions', () => {
   let testEmail: string;

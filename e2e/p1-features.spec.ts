@@ -5,7 +5,7 @@ const API_URL = process.env.API_URL || 'http://localhost:3000';
 
 test.describe('P1 功能深度测试', () => {
   const generateTestEmail = () => `e2e-p1-${Date.now()}-${Math.random().toString(36).substr(2, 9)}@example.com`;
-  const testPassword = 'Test123456!';
+  const testPassword = 'Test1234567!';
   let sharedToken: string;
   let sharedEmail: string;
   let sharedSessionId: string;

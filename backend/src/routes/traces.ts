@@ -1,10 +1,10 @@
 import { FastifyInstance } from 'fastify';
-import { createTrace, getTracesByProject, getTraceById, getTracesByIds, updateTrace, getTraceTree, getChildTraceCount, addTraceEvalResult, getTraceEvalResults, getTracesByPrompt } from '../services/trace.js';
+import { createTrace, getTracesByProject, getTraceById, getTracesByIds, updateTrace, getTraceTree, getChildTraceCount, addTraceEvalResult, getTraceEvalResults, getTracesByPrompt, upsertTraceByTraceId } from '../services/trace.js';
 import { evaluateTraceTrajectory, getTraceTrajectoryEvals } from '../services/trace-evaluation.js';
-import { getSpanTree } from '../services/span.js';
+import { getSpanTree, createSpan } from '../services/span.js';
 import { checkBreakpoints } from '../services/breakpoint.js';
 import { createSnapshot } from '../services/snapshot.js';
-import { addMessage, createSession, getMessagesBySession, getSessionById } from '../services/session.js';
+import { addMessage, createSession, endSession, getMessagesBySession, getSessionById } from '../services/session.js';
 import { createDataset, addDatasetItems } from '../services/evaluation.js';
 import { apikeyMiddleware } from '../middleware/apikey.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -68,7 +68,7 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     
-    const trace = await createTrace({
+    const traceInput = {
       projectId: request.projectId,
       sessionId: body.sessionId,
       agentId: body.agentId,
@@ -88,7 +88,12 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
       latencyMs: body.latencyMs,
       status: body.status,
       error: body.error,
-    });
+    };
+
+    // V1 接口在携带外部 traceId 时也采用 upsert 语义，避免 SDK 重试或 trace.start/end 双写产生重复行
+    const trace = body.traceId
+      ? await upsertTraceByTraceId(traceInput as Parameters<typeof upsertTraceByTraceId>[0])
+      : await createTrace(traceInput);
     
     app.log.info({ traceId: trace.id, projectId: request.projectId }, 'Trace created');
 
@@ -113,7 +118,32 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
         }
       }
     }
-    
+
+    // Truth Repair-4: SDK 上报 session_end / session.end 时，真正关闭服务端 Session
+    // 兼容三端 SDK 现有的两种命名：name === 'session_end'（当前 TS/Python/Go SDK）
+    // 以及 V2 事件风格 name === 'session.end'（技术方案 eventType 定义）
+    if (
+      body.traceType === 'session' &&
+      body.sessionId &&
+      (body.name === 'session_end' || body.name === 'session.end')
+    ) {
+      try {
+        const endedSession = await endSession(body.sessionId);
+        if (endedSession) {
+          app.log.info(
+            { sessionId: body.sessionId, traceId: trace.id },
+            'Session ended via session.end event'
+          );
+        }
+      } catch (error) {
+        // 关闭 Session 失败不应影响 trace 本身的写入结果
+        app.log.warn(
+          { error, sessionId: body.sessionId, traceId: trace.id },
+          'Failed to end session from session.end event'
+        );
+      }
+    }
+
     try {
       const triggeredBreakpoints = await checkBreakpoints(request.projectId, {
         content: body.output ? JSON.stringify(body.output) : undefined,
@@ -265,7 +295,7 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as {
       evaluator?: string;
       score?: number;
-      passed?: number;
+      passed?: number | boolean;
       details?: Record<string, unknown>;
     };
 
@@ -344,7 +374,7 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // 优先从 spans 表获取完整树
-    const spanTree = await getSpanTree(trace.trace_id);
+    const spanTree = trace.trace_id ? await getSpanTree(trace.trace_id) : null;
     if (spanTree) {
       return {
         trace,
@@ -421,7 +451,8 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
     };
 
     const spans = body.resourceSpans?.flatMap(rs => rs.scopeSpans?.flatMap(ss => ss.spans ?? []) ?? []) ?? [];
-    const createdTraces: string[] = [];
+
+    const traceIdSet = new Set<string>();
 
     for (const span of spans) {
       const attrs = span.attributes?.reduce((acc, a) => {
@@ -431,28 +462,62 @@ export async function tracesRoutes(app: FastifyInstance): Promise<void> {
         return acc;
       }, {} as Record<string, unknown>) ?? {};
 
-      const trace = await createTrace({
-        projectId: request.projectId,
-        sessionId: attrs['trace.session_id'] as string | undefined,
-        agentId: attrs['trace.agent_id'] as string | undefined,
-        traceId: span.traceId,
-        spanId: span.spanId,
-        parentSpanId: span.parentSpanId,
-        traceType: attrs['trace.type'] as string || 'otel',
-        name: span.name,
-        input: attrs['llm.input'] ?? undefined,
-        output: attrs['llm.output'] ?? undefined,
-        metadata: attrs['trace.metadata'] ?? undefined,
-        startedAt: span.startTimeUnixNano ? new Date(parseInt(span.startTimeUnixNano, 10) / 1000000) : new Date(),
-        endedAt: span.endTimeUnixNano ? new Date(parseInt(span.endTimeUnixNano, 10) / 1000000) : undefined,
-        latencyMs: attrs['llm.latency_ms'] as number | undefined,
-        status: span.status?.code === 'ERROR' ? 'error' : 'success',
-        error: span.status?.message || (span.events?.find(e => e.name === 'exception')?.attributes?.find(a => a.key === 'exception.message')?.value?.stringValue) || undefined,
-      });
-      createdTraces.push(trace.id);
+      const startedAt = span.startTimeUnixNano
+        ? new Date(parseInt(span.startTimeUnixNano, 10) / 1000000)
+        : new Date();
+      const endedAt = span.endTimeUnixNano
+        ? new Date(parseInt(span.endTimeUnixNano, 10) / 1000000)
+        : undefined;
+      const status = span.status?.code === 'ERROR' ? 'error' : 'ok';
+      const error = span.status?.message
+        || span.events?.find(e => e.name === 'exception')?.attributes?.find(a => a.key === 'exception.message')?.value?.stringValue
+        || undefined;
+      const traceType = (attrs['trace.type'] as string) || 'otel';
+      const sessionId = attrs['trace.session_id'] as string | undefined;
+
+      if (span.parentSpanId) {
+        // 非根 span：仅写入 spans 表，不重复创建 traces 行
+        await createSpan({
+          projectId: request.projectId,
+          traceId: span.traceId,
+          spanId: span.spanId,
+          parentSpanId: span.parentSpanId,
+          name: span.name,
+          traceType,
+          startedAt,
+          endedAt,
+          input: attrs['llm.input'] ?? undefined,
+          output: attrs['llm.output'] ?? undefined,
+          attributes: attrs,
+          status,
+          error,
+          sessionId,
+        });
+      } else {
+        // 根 span：upsert trace（同时由 createTrace 写入根 span）
+        const trace = await upsertTraceByTraceId({
+          projectId: request.projectId,
+          sessionId,
+          agentId: attrs['trace.agent_id'] as string | undefined,
+          traceId: span.traceId,
+          spanId: span.spanId,
+          traceType,
+          name: span.name,
+          input: attrs['llm.input'] ?? undefined,
+          output: attrs['llm.output'] ?? undefined,
+          metadata: attrs['trace.metadata'] ?? undefined,
+          startedAt,
+          endedAt,
+          latencyMs: attrs['llm.latency_ms'] as number | undefined,
+          status: status === 'error' ? 'error' : 'success',
+          error,
+        });
+        traceIdSet.add(trace.id);
+      }
     }
 
-    reply.code(201).send({ imported: createdTraces.length, traceIds: createdTraces });
+    const createdTraceIds = Array.from(traceIdSet);
+    reply.code(201).send({ imported: createdTraceIds.length, traceIds: createdTraceIds });
   });
 
   // OTel export endpoint

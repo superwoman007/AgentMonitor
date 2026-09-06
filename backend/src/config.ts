@@ -13,6 +13,12 @@ if (isProduction) {
   if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET must be at least 32 characters in production');
   }
+} else if (!process.env.JWT_SECRET) {
+  // 非生产环境若未显式配置 JWT_SECRET，会回退到内置弱密钥，启动时显著告警，
+  // 防止预发/演示环境漏配导致令牌可被伪造。
+  console.warn(
+    '[security] JWT_SECRET 未设置，正在使用内置开发弱密钥。请勿在预发/生产环境这样运行。'
+  );
 }
 
 function parseCorsOrigins(): string[] | true {

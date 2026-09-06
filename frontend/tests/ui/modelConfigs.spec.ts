@@ -73,6 +73,54 @@ test.describe('ModelConfigs 页面', () => {
     ).toBeVisible({ timeout: 15000 });
   });
 
+  test('供应商下拉框应包含国内供应商', async ({ page }) => {
+    await page.click('button:has-text("创建"), button:has-text("Create Model Config")');
+    const select = page.locator('select').first();
+    await expect(select).toBeVisible({ timeout: 10000 });
+
+    const options = await select.locator('option').allTextContents();
+    expect(options).toContain('DeepSeek');
+    expect(options).toContain('Kimi (Moonshot)');
+    expect(options).toContain('GLM (智谱AI)');
+    expect(options).toContain('豆包 (Doubao)');
+    expect(options).toContain('MiMo (小米)');
+  });
+
+  test('选择国内供应商后模型下拉框应自动更新', async ({ page }) => {
+    await page.click('button:has-text("创建"), button:has-text("Create Model Config")');
+
+    // 选择 DeepSeek
+    await page.locator('select').first().selectOption('deepseek');
+
+    // 模型应为下拉框且包含 deepseek-v4-pro
+    const modelSelect = page.locator('select').nth(1);
+    await expect(modelSelect).toBeVisible({ timeout: 10000 });
+    const modelOptions = await modelSelect.locator('option').allTextContents();
+    expect(modelOptions).toContain('DeepSeek-V4-Pro');
+  });
+
+  test('选择 MiMo 后应显示 api-key 认证提示', async ({ page }) => {
+    await page.click('button:has-text("创建"), button:has-text("Create Model Config")');
+    await page.locator('select').first().selectOption('mimo');
+
+    // 等待 api-key 提示文字出现
+    await expect(
+      page.locator('text=使用 api-key 请求头, text=Uses api-key header')
+    ).toBeVisible({ timeout: 10000 });
+  });
+
+  test('每个配置卡片应有文档链接', async ({ page }) => {
+    // 先创建一个配置
+    await page.click('button:has-text("创建"), button:has-text("Create Model Config")');
+    await page.fill('input[type="text"]', 'Docs Link Test');
+    await page.fill('input[type="password"]', 'sk-docs-test');
+    await page.click('button[type="submit"]');
+    await expect(page.locator('text=Docs Link Test')).toBeVisible({ timeout: 10000 });
+
+    // 验证文档链接存在
+    await expect(page.locator('div:has-text("Docs Link Test")').locator('text=文档, text=Docs').first()).toBeVisible();
+  });
+
   test('未登录时应该重定向到登录页', async ({ page }) => {
     await page.evaluate(() => localStorage.clear());
     await page.goto(`${BASE_URL}/model-configs`);

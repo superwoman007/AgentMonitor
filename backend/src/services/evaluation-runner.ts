@@ -1,7 +1,7 @@
 import {
   getExperimentById,
   getDatasetItems,
-  getEvaluatorsByProject,
+  getEvaluatorById,
   createResult,
   completeExperiment,
   EvaluationExperiment,
@@ -32,13 +32,18 @@ export async function runExperiment(
     return completeExperiment(experimentId, { total_items: 0, passed: 0, failed: 0, avg_score: 0 });
   }
 
-  // 1. 获取评估器
-  const evaluators = await getEvaluatorsByProject(experiment.project_id);
-  const defaultEvaluator = evaluators[0];
+  // 1. 获取实验绑定的评估器（不再默认取项目第一个评估器）
+  if (!experiment.evaluator_id) {
+    return failExperiment(experimentId, 'This experiment has no evaluator bound. Please recreate the experiment with an evaluator_id.');
+  }
+  const boundEvaluator = await getEvaluatorById(experiment.evaluator_id);
+  if (!boundEvaluator) {
+    return failExperiment(experimentId, `Evaluator ${experiment.evaluator_id} not found. It may have been deleted. Please recreate the experiment with a valid evaluator.`);
+  }
 
   let judgeModelConfig = null;
-  if (defaultEvaluator?.type === 'llm_judge' && defaultEvaluator?.model_config_id) {
-    const cfg = await getModelConfigById(defaultEvaluator.model_config_id);
+  if (boundEvaluator.type === 'llm_judge' && boundEvaluator.model_config_id) {
+    const cfg = await getModelConfigById(boundEvaluator.model_config_id);
     if (cfg?.api_key) {
       judgeModelConfig = { provider: cfg.provider, model: cfg.model, api_key: cfg.api_key, base_url: cfg.base_url };
     }
@@ -90,13 +95,13 @@ export async function runExperiment(
     const evaluation = await evaluateOutput(
       actualOutput,
       item.expected_output || '',
-      defaultEvaluator?.type || 'exact_match',
-      defaultEvaluator?.config || {},
+      boundEvaluator.type,
+      boundEvaluator.config || {},
       judgeModelConfig ?? undefined
     );
 
     await createResult(experimentId, item.id, {
-      evaluator_id: defaultEvaluator?.id || undefined,
+      evaluator_id: boundEvaluator.id,
       output: actualOutput,
       score: evaluation.score,
       passed: evaluation.passed,
@@ -196,7 +201,7 @@ function delay(ms: number): Promise<void> {
 
 // ==================== Evaluate Output ====================
 
-async function evaluateOutput(
+export async function evaluateOutput(
   output: string,
   expected: string,
   evaluatorType: string,

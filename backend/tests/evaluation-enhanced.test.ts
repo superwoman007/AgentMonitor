@@ -325,11 +325,24 @@ describe('Evaluation Center Enhanced API', () => {
   // ==================== Experiment Report ====================
   describe('Experiment Report', () => {
     beforeAll(async () => {
-      // Start and complete experiment with results
+      // Truth Repair-8: start 立即返回 202；等待后台 runner 结束（该实验未绑定 target 会 failed，
+      // 随后通过手动上传结果并 complete 覆盖状态）
       await request(app.server)
         .post(`/api/evaluation/experiments/${experimentId}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
+
+      await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${experimentId}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status === 'pending' || res.body.status === 'running') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+        },
+        { timeout: 10000, interval: 100 }
+      );
 
       const itemsResponse = await request(app.server)
         .get(`/api/evaluation/datasets/${datasetId}/items`)
@@ -398,10 +411,23 @@ describe('Evaluation Center Enhanced API', () => {
         .expect(201);
       const exp2Id = exp2Response.body.id;
 
+      // Truth Repair-8: start 立即返回 202；等待后台 runner 结束后再手动 complete
       await request(app.server)
         .post(`/api/evaluation/experiments/${exp2Id}/start`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
+        .expect(202);
+
+      await vi.waitFor(
+        async () => {
+          const res = await request(app.server)
+            .get(`/api/evaluation/experiments/${exp2Id}`)
+            .set('Authorization', `Bearer ${authToken}`);
+          if (res.body.status === 'pending' || res.body.status === 'running') {
+            throw new Error(`experiment still ${res.body.status}`);
+          }
+        },
+        { timeout: 10000, interval: 100 }
+      );
 
       await request(app.server)
         .post(`/api/evaluation/experiments/${exp2Id}/complete`)

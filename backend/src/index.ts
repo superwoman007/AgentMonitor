@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { runMigrations } from './db/migrate.js';
 import { closeDb } from './db/index.js';
 import { config } from './config.js';
+import { startEvaluationWorker, stopEvaluationWorker } from './services/evaluation-worker.js';
 
 async function main() {
   console.log('Starting AgentMonitor backend...');
@@ -15,6 +16,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     console.log(`Received ${signal}, shutting down...`);
     try {
+      stopEvaluationWorker();
       await app.close();
       await closeDb();
       console.log('Server closed');
@@ -30,6 +32,8 @@ async function main() {
   
   try {
     await app.listen({ port: config.port, host: '0.0.0.0' });
+    // 启动持久化 Evaluation Worker（claim/lease/heartbeat/recovery）
+    await startEvaluationWorker();
     console.log(`Server listening on http://0.0.0.0:${config.port}`);
     console.log(`API prefix: ${config.api.prefix}`);
     console.log(`Health check: http://localhost:${config.port}/health`);

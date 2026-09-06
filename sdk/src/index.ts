@@ -18,6 +18,14 @@ import type {
   SpanOptions,
 } from './types.js';
 import { autoInstrument } from './auto-instrument.js';
+import {
+  runInContext,
+  getActiveState,
+  getActiveTraceId,
+  getActiveSpanId,
+  type ActiveSpanState,
+} from './context.js';
+import { PromptRuntimeClient, type GetPromptOptions, type ResolvedPrompt } from './prompt-runtime.js';
 
 type BufferedEvent = {
   type: 'trace';
@@ -36,13 +44,18 @@ type BufferedEvent = {
 };
 
 export class AgentMonitor {
-  private config: Required<Omit<SDKConfig, 'apiKey'>> & { apiKey: string };
+  private static activeMonitors = new Set<AgentMonitor>();
+  private static exitHooksInstalled = false;
+  private config: Required<Omit<SDKConfig, 'apiKey' | 'projectId' | 'promptCacheTtlMs'>> &
+    Pick<SDKConfig, 'projectId' | 'promptCacheTtlMs'> & { apiKey: string };
   private buffer: BufferedEvent[] = [];
   private flushTimer?: ReturnType<typeof setInterval>;
   private offlineBuffer: TraceData[] = [];
   private isOnline: boolean = true;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private retryDelayMs: number = 5000;
+  private onlineHandler?: () => void;
+  private offlineHandler?: () => void;
 
   private currentSessionId?: string;
   private messageHistory: Array<{ role: string; content: string; timestamp: string }> = [];
@@ -60,8 +73,14 @@ export class AgentMonitor {
   private sessionSampleDecisions = new Map<string, boolean>(); // session 级别采样决策
 
   // P0-01: Span 级追踪
-  private spanStack = new Map<string, SpanContext[]>();
+  // Truth Repair-3：上下文传播改由 context.ts 的 AsyncLocalStorage 承担，
+  // 解决并发 Promise 下 traceId/parentSpanId 串扰问题。
+  // activeSpans 仅作为活跃 span 的注册表，用于内存上限保护与 close() 时兜底关闭。
+  private activeSpans = new Map<string, SpanContext>();
   private readonly MAX_SPAN_STACK_SIZE = 1000;
+
+  // PR-12: Prompt Runtime 客户端（按需懒加载，避免未配置项目时报错）
+  private promptRuntime?: PromptRuntimeClient;
 
   constructor(config: SDKConfig) {
     this.config = {
@@ -78,6 +97,7 @@ export class AgentMonitor {
     };
 
     if (!this.config.disabled) {
+      AgentMonitor.activeMonitors.add(this);
       this.startFlushTimer();
       // P0-2: 只在浏览器环境注册 online/offline 事件
       this.setupOnlineListener();
@@ -147,6 +167,17 @@ export class AgentMonitor {
     if (usage && typeof usage === 'object') {
       metadata.usage = usage;
     }
+    // PR-12：若调用方传入 promptRef，自动把 prompt.id/version_id 写入 metadata，
+    // 便于后端按 Prompt 版本聚合 Trace。
+    if (request.promptRef) {
+      metadata.prompt = {
+        id: request.promptRef.id,
+        version_id: request.promptRef.versionId,
+        name: request.promptRef.name,
+        version_number: request.promptRef.versionNumber,
+        environment: request.promptRef.environment,
+      };
+    }
 
     const trace: TraceData = {
       traceType: 'llm',
@@ -170,33 +201,25 @@ export class AgentMonitor {
       return; // 丢弃该 trace
     }
 
+    // Truth Repair-2: Trace 即根 Span，二者共享同一组 ID。
+    // 由 SDK 生成一次 traceId/spanId，随 /traces 发送给后端；
+    // 后端 createTrace 负责将该根 Span 同步写入 spans 表，
+    // SDK 不再单独向 /spans 双写，避免产生孤儿重复根节点。
+    const startedAt = data.startedAt || new Date().toISOString();
+    const endedAt = data.endedAt || (data.latencyMs ? new Date().toISOString() : undefined);
+    const traceId = data.traceId || this.generateUUID();
+    const spanId = data.spanId || this.generateUUID();
+
     const enrichedData: TraceData = {
       ...data,
-      startedAt: data.startedAt || new Date().toISOString(),
-      endedAt: data.endedAt || (data.latencyMs ? new Date().toISOString() : undefined),
+      traceId,
+      spanId,
+      parentSpanId: data.parentSpanId,
+      startedAt,
+      endedAt,
     };
 
     this.buffer.push({ type: 'trace', data: enrichedData });
-
-    // 双写：同步生成一条 span 记录
-    if (this.config.enableSpanWrite) {
-      const spanData: SpanContext = {
-        spanId: this.generateUUID(),
-        traceId: this.generateUUID(),
-        name: data.name,
-        traceType: data.traceType,
-        startedAt: enrichedData.startedAt!,
-        endedAt: enrichedData.endedAt,
-        latencyMs: data.latencyMs,
-        input: data.input,
-        output: data.output,
-        attributes: data.metadata as Record<string, unknown> | undefined,
-        status: enrichedData.status,
-        error: data.error,
-        sessionId: data.sessionId,
-      };
-      this.buffer.push({ type: 'span', data: spanData });
-    }
 
     this.maybeFlush();
   }
@@ -502,8 +525,52 @@ export class AgentMonitor {
   }
 
   private getProjectId(): string {
+    if (this.config.projectId) return this.config.projectId;
     const parts = this.config.apiKey.split('_');
     return parts.length > 1 ? parts[0] : '';
+  }
+
+  // ─────────────────────────────────────────────
+  // PR-12: Prompt Runtime
+  // ─────────────────────────────────────────────
+
+  /**
+   * 获取 Prompt Runtime 客户端（懒加载）。
+   * 若无法解析 projectId，抛错。
+   */
+  private getPromptRuntime(): PromptRuntimeClient {
+    if (this.promptRuntime) return this.promptRuntime;
+    const projectId = this.getProjectId();
+    if (!projectId) {
+      throw new Error(
+        '[AgentMonitor] projectId is required for prompt runtime. Set `projectId` in SDKConfig or use an apiKey formatted as `<projectId>_<secret>`.'
+      );
+    }
+    this.promptRuntime = new PromptRuntimeClient({
+      baseUrl: this.config.baseUrl,
+      apiKey: this.config.apiKey,
+      projectId,
+      defaultMaxAgeMs: this.config.promptCacheTtlMs,
+    });
+    return this.promptRuntime;
+  }
+
+  /**
+   * 从 Runtime 解析已发布的 Prompt。
+   *
+   * @param promptName - Prompt 名称
+   * @param options - environment / maxAgeMs / forceRefresh / signal
+   * @returns 解析后的 Prompt（含 content、versionId、etag 等）
+   */
+  async getPrompt(promptName: string, options?: GetPromptOptions): Promise<ResolvedPrompt> {
+    return this.getPromptRuntime().get(promptName, options);
+  }
+
+  /**
+   * 清空 Prompt Runtime 缓存。
+   */
+  clearPromptCache(): void {
+    this.promptRuntime?.clearCache();
   }
 
   // ─────────────────────────────────────────────
@@ -613,7 +680,23 @@ export class AgentMonitor {
           'X-API-Key': this.config.apiKey,
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
-        body: JSON.stringify(trace),
+        body: JSON.stringify({
+          traceId: trace.traceId,
+          spanId: trace.spanId,
+          parentSpanId: trace.parentSpanId,
+          sessionId: trace.sessionId,
+          agentId: trace.agentId,
+          traceType: trace.traceType,
+          name: trace.name,
+          input: trace.input,
+          output: trace.output,
+          metadata: trace.metadata,
+          startedAt: trace.startedAt,
+          endedAt: trace.endedAt,
+          latencyMs: trace.latencyMs,
+          status: trace.status,
+          error: trace.error,
+        }),
       });
 
       if (!response.ok) {
@@ -711,14 +794,20 @@ export class AgentMonitor {
 
   /**
    * 开始一个新的 Span，返回 SpanContext
+   *
+   * Truth Repair-3：traceId/parentSpanId 从当前异步上下文读取，
+   * 不再依赖进程级共享栈，避免并发请求间的 trace 串扰。
+   *
    * @param name - Span 名称
    * @param options - 可选配置（输入数据、属性、会话ID）
    * @returns SpanContext 用于后续 endSpan
    */
   startSpan(name: string, options?: SpanOptions): SpanContext {
-    const traceId = this.getCurrentTraceId() || this.generateUUID();
+    // 从当前异步链读取 traceId；无则生成一个作为新链路根
+    const traceId = getActiveTraceId() || this.generateUUID();
     const spanId = this.generateUUID();
-    const parentSpanId = this.getCurrentSpanId(traceId);
+    // 从当前异步链读取栈顶 spanId 作为父级
+    const parentSpanId = getActiveSpanId();
 
     const ctx: SpanContext = {
       spanId,
@@ -732,14 +821,9 @@ export class AgentMonitor {
       sessionId: options?.sessionId ?? this.currentSessionId ?? null,
     };
 
-    // 入栈
-    if (!this.spanStack.has(traceId)) {
-      this.spanStack.set(traceId, []);
-    }
-    this.spanStack.get(traceId)!.push(ctx);
-
-    // 内存保护
-    this.maybeCleanupSpanStack();
+    // 注册到活跃表，用于内存保护与 close() 兜底
+    this.activeSpans.set(spanId, ctx);
+    this.maybeCleanupActiveSpans();
 
     this.bufferSpan(ctx);
     return ctx;
@@ -754,28 +838,32 @@ export class AgentMonitor {
     const endedAt = new Date().toISOString();
     const latencyMs = new Date(endedAt).getTime() - new Date(ctx.startedAt).getTime();
 
+    // V2 协议：成功终态统一为 'ok'，兼容调用方仍传 'success' 的旧写法
+    const rawStatus = result?.status || (result?.error ? 'error' : 'ok');
+    const normalizedStatus = rawStatus === 'success' ? 'ok' : rawStatus;
+
     const endedCtx: SpanContext = {
       ...ctx,
       endedAt,
       latencyMs,
-      status: result?.status || (result?.error ? 'error' : 'success'),
+      status: normalizedStatus,
       output: result?.output,
       error: result?.error,
       attributes: { ...ctx.attributes, ...result?.attributes },
     };
 
-    // 出栈
-    const stack = this.spanStack.get(ctx.traceId);
-    if (stack) {
-      const idx = stack.findIndex(s => s.spanId === ctx.spanId);
-      if (idx !== -1) stack.splice(idx, 1);
-    }
+    // 从活跃表移除
+    this.activeSpans.delete(ctx.spanId);
 
     this.bufferSpan(endedCtx);
   }
 
   /**
    * 便捷方法：自动管理 Span 生命周期
+   *
+   * Truth Repair-3：通过 runInContext 把新 span 绑定到当前异步链，
+   * 函数内部嵌套的 startSpan/withSpan 会自动将本 span 作为 parent。
+   *
    * @param name - Span 名称
    * @param fn - 要执行的异步函数，接收 SpanContext 参数
    * @param options - 可选配置
@@ -783,10 +871,18 @@ export class AgentMonitor {
    */
   async withSpan<T>(name: string, fn: (span: SpanContext) => Promise<T>, options?: SpanOptions): Promise<T> {
     const span = this.startSpan(name, options);
+    // 继承已有上下文（若存在），并在栈顶追加本 span
+    const parentState = getActiveState();
+    const nextState: ActiveSpanState = {
+      traceId: span.traceId,
+      stack: [...(parentState?.stack ?? []), span],
+    };
     try {
-      const result = await fn(span);
-      this.endSpan(span, { status: 'success', output: result });
-      return result;
+      return await runInContext(nextState, async () => {
+        const result = await fn(span);
+        this.endSpan(span, { status: 'ok', output: result });
+        return result;
+      });
     } catch (error) {
       this.endSpan(span, {
         status: 'error',
@@ -798,14 +894,16 @@ export class AgentMonitor {
 
   /**
    * 设置当前活跃 Span 的单个属性
-   * @param traceId - 追踪ID，用于定位 spanStack 中的栈
+   *
+   * Truth Repair-3：从异步上下文读取栈顶 span，无需调用方传 traceId。
+   *
    * @param key - 属性键名
    * @param value - 属性值
    */
-  setSpanAttribute(traceId: string, key: string, value: unknown): void {
-    const stack = this.spanStack.get(traceId);
-    if (stack && stack.length > 0) {
-      const current = stack[stack.length - 1];
+  setSpanAttribute(key: string, value: unknown): void {
+    const state = getActiveState();
+    if (state && state.stack.length > 0) {
+      const current = state.stack[state.stack.length - 1];
       if (!current.attributes) current.attributes = {};
       current.attributes[key] = value;
     }
@@ -813,13 +911,12 @@ export class AgentMonitor {
 
   /**
    * 批量设置当前活跃 Span 的属性
-   * @param traceId - 追踪ID，用于定位 spanStack 中的栈
    * @param attrs - 要批量设置的属性键值对
    */
-  setSpanAttributes(traceId: string, attrs: Record<string, unknown>): void {
-    const stack = this.spanStack.get(traceId);
-    if (stack && stack.length > 0) {
-      const current = stack[stack.length - 1];
+  setSpanAttributes(attrs: Record<string, unknown>): void {
+    const state = getActiveState();
+    if (state && state.stack.length > 0) {
+      const current = state.stack[state.stack.length - 1];
       if (!current.attributes) current.attributes = {};
       Object.assign(current.attributes, attrs);
     }
@@ -836,47 +933,15 @@ export class AgentMonitor {
   }
 
   /**
-   * 获取当前 traceId（从 spanStack 中获取最近的）
-   * @returns 当前活跃的 traceId，若无则返回 undefined
+   * 内存保护：活跃 span 总数超过阈值时，强制关闭最早注册的 span
    */
-  private getCurrentTraceId(): string | undefined {
-    for (const [traceId, stack] of this.spanStack) {
-      if (stack.length > 0) return traceId;
-    }
-    return undefined;
-  }
-
-  /**
-   * 获取当前层级的 parentSpanId
-   * @param traceId - 追踪ID
-   * @returns 当前栈顶的 spanId，作为新 span 的 parentSpanId
-   */
-  private getCurrentSpanId(traceId: string): string | undefined {
-    const stack = this.spanStack.get(traceId);
-    if (stack && stack.length > 0) {
-      return stack[stack.length - 1].spanId;
-    }
-    return undefined;
-  }
-
-  /**
-   * 内存保护：spanStack 总数超过阈值时清理最早的 span
-   */
-  private maybeCleanupSpanStack(): void {
-    let total = 0;
-    for (const stack of this.spanStack.values()) {
-      total += stack.length;
-    }
-    if (total > this.MAX_SPAN_STACK_SIZE) {
-      // 找到最早的 traceId 并关闭其所有 span
-      const firstKey = this.spanStack.keys().next().value;
+  private maybeCleanupActiveSpans(): void {
+    if (this.activeSpans.size > this.MAX_SPAN_STACK_SIZE) {
+      const firstKey = this.activeSpans.keys().next().value;
       if (firstKey) {
-        const stack = this.spanStack.get(firstKey)!;
-        while (stack.length > 0) {
-          const span = stack.shift()!;
-          this.bufferSpan({ ...span, status: 'error', error: 'auto-closed: stack overflow' });
-        }
-        this.spanStack.delete(firstKey);
+        const stale = this.activeSpans.get(firstKey)!;
+        this.activeSpans.delete(firstKey);
+        this.bufferSpan({ ...stale, status: 'error', error: 'auto-closed: active span overflow' });
       }
     }
   }
@@ -935,22 +1000,24 @@ export class AgentMonitor {
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     if (this.flushTimer) {
       clearInterval(this.flushTimer);
     }
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
     }
-    // 自动结束所有未关闭的 span
-    for (const [traceId, stack] of this.spanStack) {
-      while (stack.length > 0) {
-        const span = stack.shift()!;
-        this.bufferSpan({ ...span, status: 'error', error: 'auto-closed: monitor closed' });
-      }
+    // 自动结束所有未关闭的 span（activeSpans 注册表兜底，与异步上下文解耦）
+    for (const span of this.activeSpans.values()) {
+      this.bufferSpan({ ...span, status: 'error', error: 'auto-closed: monitor closed' });
     }
-    this.spanStack.clear();
-    this.flush();
+    this.activeSpans.clear();
+    if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      if (this.onlineHandler) window.removeEventListener('online', this.onlineHandler);
+      if (this.offlineHandler) window.removeEventListener('offline', this.offlineHandler);
+    }
+    AgentMonitor.activeMonitors.delete(this);
+    await this.flush();
   }
 
   private startFlushTimer(): void {
@@ -972,15 +1039,17 @@ export class AgentMonitor {
    */
   private setupOnlineListener(): void {
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('online', () => {
+      this.onlineHandler = () => {
         this.isOnline = true;
         this.retryDelayMs = 5000; // 重置退避
         this.flush();
-      });
+      };
 
-      window.addEventListener('offline', () => {
+      this.offlineHandler = () => {
         this.isOnline = false;
-      });
+      };
+      window.addEventListener('online', this.onlineHandler);
+      window.addEventListener('offline', this.offlineHandler);
     }
     // Node.js 环境：isOnline 状态由 sendTrace 的成功/失败自动驱动
   }
@@ -989,20 +1058,29 @@ export class AgentMonitor {
    * P0-2: Node.js 进程退出前强制 flush，减少数据丢失
    */
   private setupExitHooks(): void {
-    if (typeof process !== 'undefined' && typeof process.on === 'function') {
+    if (
+      !AgentMonitor.exitHooksInstalled &&
+      typeof process !== 'undefined' &&
+      typeof process.on === 'function'
+    ) {
+      AgentMonitor.exitHooksInstalled = true;
       const flushAndExit = async (signal: string) => {
         console.log(`[AgentMonitor] ${signal} received, flushing buffer...`);
-        await this.flush();
+        await Promise.all(
+          Array.from(AgentMonitor.activeMonitors, monitor => monitor.flush())
+        );
         process.exit(0);
       };
 
-      process.on('SIGTERM', () => flushAndExit('SIGTERM'));
-      process.on('SIGINT', () => flushAndExit('SIGINT'));
+      process.on('SIGTERM', () => { void flushAndExit('SIGTERM'); });
+      process.on('SIGINT', () => { void flushAndExit('SIGINT'); });
 
       // 同步退出时的最后保障（exit 事件只能同步）
       process.on('exit', () => {
-        if (this.buffer.length > 0) {
-          console.warn(`[AgentMonitor] Process exiting with ${this.buffer.length} unflushed events`);
+        const unflushedCount = Array.from(AgentMonitor.activeMonitors)
+          .reduce((total, monitor) => total + monitor.buffer.length, 0);
+        if (unflushedCount > 0) {
+          console.warn(`[AgentMonitor] Process exiting with ${unflushedCount} unflushed events`);
         }
       });
     }

@@ -10,7 +10,7 @@ test.describe('场景五：Prompt ↔ Trace 联动 E2E', () => {
 
   test.beforeAll(async ({ request }) => {
     const email = `e2e-prompt-trace-${Date.now()}@test.com`;
-    const password = 'Test123456!';
+    const password = 'Test1234567!';
 
     const regRes = await request.post(`${API_URL}/api/v1/auth/register`, {
       data: { name: 'E2E Prompt Trace', email, password }

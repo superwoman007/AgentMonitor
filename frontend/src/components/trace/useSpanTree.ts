@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from '../../App';
 import { api, Trace, SpanTreeNode, SpanStats, TraceTreeResponse } from '../../api';
 
 /**
@@ -9,11 +10,13 @@ import { api, Trace, SpanTreeNode, SpanStats, TraceTreeResponse } from '../../ap
  * @returns tree 数据、加载状态、错误信息
  */
 export function useSpanTree(traceId: string | undefined) {
+  const { lang } = useTranslation();
   const [trace, setTrace] = useState<Trace | null>(null);
   const [spans, setSpans] = useState<SpanTreeNode[]>([]);
   const [stats, setStats] = useState<SpanStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const traceTreeLoadFailed = lang === 'zh' ? '加载调用树失败' : 'Failed to load trace tree';
 
   /**
    * 判断响应是否为旧格式（包含 children 字段）
@@ -72,12 +75,12 @@ export function useSpanTree(traceId: string | undefined) {
         setStats(null);
       }
     } catch (err: any) {
-      setError(err.message || '加载 Trace 树失败');
+      setError(err.message || traceTreeLoadFailed);
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [traceId]);
+  }, [traceId, traceTreeLoadFailed]);
 
   useEffect(() => {
     loadTree();

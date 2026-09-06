@@ -3,6 +3,8 @@ import { Layout } from '../components/Layout';
 import { RefreshButton } from '../components/RefreshButton';
 import {useProjectStore } from '../stores/projectStore';
 import { api, ApiKey, Project } from '../api';
+import { SdkDownloads } from '../components/SdkDownloads';
+import { ApiDocs } from '../components/ApiDocs';
 import { useTranslation } from '../App';
 
 export function SettingsPage() {
@@ -409,6 +411,14 @@ export function SettingsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SdkDownloads />
+      </div>
+
+      <div className="mt-6">
+        <ApiDocs />
       </div>
     </Layout>
   );

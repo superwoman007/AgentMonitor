@@ -10,6 +10,9 @@ class SDKConfig:
     """SDK 配置"""
     api_key: str
     base_url: str = "http://localhost:3000"
+    # PR-12：项目 ID。Prompt Runtime 等 V2 接口需要显式 projectId。
+    # 若未提供，SDK 会按 `<projectId>_<rest>` 约定从 api_key 解析。
+    project_id: Optional[str] = None
     disabled: bool = False
     buffer_size: int = 100
     flush_interval: float = 5.0  # seconds
@@ -19,6 +22,8 @@ class SDKConfig:
         default_factory=lambda: ["error", "breakpoint"]
     )
     enable_span_write: bool = True
+    # PR-12：Prompt Runtime 缓存 TTL（秒），默认 60 秒
+    prompt_cache_ttl_sec: float = 60.0
 
 
 @dataclass
@@ -44,8 +49,13 @@ class TraceData:
     started_at: Optional[str] = None
     ended_at: Optional[str] = None
     latency_ms: Optional[float] = None
-    status: Optional[Literal["success", "error"]] = None
+    status: Optional[Literal["success", "error", "ok", "cancelled", "timeout"]] = None
     error: Optional[str] = None
+    # V2 协议：显式的 traceId / spanId / parentSpanId，由 SDK 生成后透传给后端，
+    # 后端 createTrace 据此唯一落库根 Span，避免 SDK 与后端各自生成 ID 导致双写孤儿。
+    trace_id: Optional[str] = None
+    span_id: Optional[str] = None
+    parent_span_id: Optional[str] = None
 
 
 @dataclass

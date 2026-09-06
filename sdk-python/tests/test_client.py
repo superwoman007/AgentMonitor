@@ -3,6 +3,7 @@
 import random
 import time
 import asyncio
+import uuid
 import pytest
 from unittest.mock import patch, MagicMock
 from dataclasses import asdict
@@ -352,6 +353,43 @@ async def test_wrap_async_error(make_client):
     assert data["name"] == "async_fail"
     assert data["status"] == "error"
     assert "async oops" in data["error"]
+
+
+@pytest.mark.asyncio
+async def test_contextvar_isolates_100_concurrent_async_tasks(make_client):
+    """100 个 asyncio Task 并发嵌套 Span 时，traceId 与 parentSpanId 不应串扰。"""
+    client = make_client(enable_span_write=True, flush_interval=3600.0)
+    concurrency = 100
+
+    async def run_one(index: int):
+        root = client.start_span(f"root-{index}", trace_id=str(uuid.uuid4()))
+        await asyncio.sleep(0)
+        child = client.start_span(f"child-{index}")
+        await asyncio.sleep(0)
+        client.end_span(child, status="ok", output={"index": index})
+        client.end_span(root, status="ok", output={"index": index})
+        return {
+            "root_trace_id": root.trace_id,
+            "root_span_id": root.span_id,
+            "child_trace_id": child.trace_id,
+            "child_span_id": child.span_id,
+            "child_parent_span_id": child.parent_span_id,
+        }
+
+    results = await asyncio.gather(*(run_one(i) for i in range(concurrency)))
+
+    trace_ids = {item["root_trace_id"] for item in results}
+    assert len(trace_ids) == concurrency
+
+    for item in results:
+        assert item["child_trace_id"] == item["root_trace_id"]
+        assert item["child_parent_span_id"] == item["root_span_id"]
+        assert item["child_span_id"] != item["root_span_id"]
+
+    span_events = [event for event in client.buffer if event["type"] == "span"]
+    assert len(span_events) == concurrency * 4
+    for event in span_events:
+        assert event["data"]["trace_id"] in trace_ids
 
 
 # ─────────────────────────────────────────────────────────────

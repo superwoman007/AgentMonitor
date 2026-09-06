@@ -1,0 +1,56 @@
+{
+  "events": [
+    {
+      "schemaVersion": "2.0",
+      "eventId": "evt_span_start_001",
+      "eventType": "span.start",
+      "occurredAt": "2026-08-23T12:00:00.000Z",
+      "resource": {
+        "serviceName": "demo-agent",
+        "sdkName": "agentmonitor-js",
+        "sdkVersion": "2.0.0"
+      },
+      "context": {
+        "traceId": "trace_demo_001",
+        "spanId": "span_demo_001",
+        "sessionId": "session_demo_001"
+      },
+      "payload": {
+        "name": "llm_call",
+        "traceType": "llm",
+        "input": {
+          "prompt": "hello"
+        },
+        "attributes": {
+          "provider": "openai"
+        },
+        "status": "unset"
+      }
+    },
+    {
+      "schemaVersion": "2.0",
+      "eventId": "evt_span_end_001",
+      "eventType": "span.end",
+      "occurredAt": "2026-08-23T12:00:01.250Z",
+      "resource": {
+        "serviceName": "demo-agent",
+        "sdkName": "agentmonitor-js",
+        "sdkVersion": "2.0.0"
+      },
+      "context": {
+        "traceId": "trace_demo_001",
+        "spanId": "span_demo_001",
+        "sessionId": "session_demo_001"
+      },
+      "payload": {
+        "name": "llm_call",
+        "traceType": "llm",
+        "output": {
+          "content": "world"
+        },
+        "status": "ok",
+        "latencyMs": 1250
+      }
+    }
+  ]
+}

@@ -28,7 +28,9 @@ export interface LLMResponse {
  */
 export async function callLLM(options: LLMCallOptions): Promise<LLMResponse> {
   let baseUrl = (options.baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '');
-  if (!baseUrl.endsWith('/v1')) {
+  // 如果 URL 已包含版本路径（如 /v1, /v2, /v3, /v4），则不再追加 /v1
+  const hasVersionPath = /\/v\d+$/.test(baseUrl);
+  if (!hasVersionPath && !baseUrl.endsWith('/v1')) {
     baseUrl += '/v1';
   }
   const url = `${baseUrl}/chat/completions`;

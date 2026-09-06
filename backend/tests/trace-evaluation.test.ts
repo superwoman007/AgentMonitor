@@ -53,6 +53,8 @@ describe('Trace Trajectory Evaluation', () => {
     modelConfigId = cfgRes.body.id;
 
     // Create a trace with child spans via OTel export
+    const otelSuffix = Date.now();
+    const otelTraceId = `trace-eval-${otelSuffix}`;
     const otelResponse = await request(app.server)
       .post('/api/traces/otel-export')
       .set('x-api-key', await getApiKey())
@@ -61,24 +63,24 @@ describe('Trace Trajectory Evaluation', () => {
           scopeSpans: [{
             spans: [
               {
-                traceId: 'trace-001',
-                spanId: 'span-root',
+                traceId: otelTraceId,
+                spanId: `span-root-${otelSuffix}`,
                 name: 'agent.run',
                 kind: 'INTERNAL',
                 startTimeUnixNano: String(Date.now() * 1000000),
                 endTimeUnixNano: String((Date.now() + 500) * 1000000),
                 attributes: [
                   { key: 'trace.type', value: { stringValue: 'agent' } },
-                  { key: 'trace.session_id', value: { stringValue: 'session-001' } },
+                  { key: 'trace.session_id', value: { stringValue: `session-eval-${otelSuffix}` } },
                   { key: 'llm.input', value: { stringValue: 'Search for latest AI news' } },
                   { key: 'llm.output', value: { stringValue: 'Here are the latest AI news...' } },
                 ],
                 status: { code: 'OK' },
               },
               {
-                traceId: 'trace-001',
-                spanId: 'span-tool',
-                parentSpanId: 'span-root',
+                traceId: otelTraceId,
+                spanId: `span-tool-${otelSuffix}`,
+                parentSpanId: `span-root-${otelSuffix}`,
                 name: 'tool.search_web',
                 kind: 'INTERNAL',
                 startTimeUnixNano: String((Date.now() + 100) * 1000000),
